@@ -1,6 +1,6 @@
 {
   "name": "simple-ai-copilot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A simple Chrome sidebar AI copilot with OpenAI-compatible API, web search, and MCP support",
   "main": "background.js",
   "scripts": {

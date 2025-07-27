@@ -8,24 +8,67 @@ class MCPService {
         this.mcpServers = new Map();
         this.availableTools = new Map();
         this.defaultServersInitialized = false; // 添加标志防止重复初始化
+        
+        // Constants
+        this.CONSTANTS = {
+            BRIDGE_TIMEOUT: 5000,
+            MAX_RESULT_LENGTH: 2000,
+            CONFIDENCE_THRESHOLD: 0.5,
+            DEBUG_MODE: false // Set to true for debug logging
+        };
+        
         this.init();
     }
 
+    // Debug mode check
+    isDebugMode() {
+        return this.CONSTANTS.DEBUG_MODE || 
+               (typeof window !== 'undefined' && window.location?.search?.includes('debug=1'));
+    }
+
     async init() {
-        console.log('[MCP-DEBUG] 开始初始化MCP服务...');
+        if (this.isDebugMode()) {
+            console.log('[MCP-DEBUG] 开始初始化MCP服务...');
+        }
+        
         try {
             await this.loadMCPConfig();
             await this.checkBridgeConnection();
             
+            // 记录初始化前的服务器数量（可能包含JSON导入的服务器）
+            const existingServersCount = this.mcpServers.size;
+            if (this.isDebugMode()) {
+                console.log('[MCP-DEBUG] 初始化前已有服务器数量:', existingServersCount);
+            }
+            
             // 加载保存的服务器配置
             this.loadSavedServers();
             
-            console.log('[MCP-DEBUG] MCP服务初始化完成');
-            console.log('[MCP-DEBUG] 最终状态:', this.getBridgeStatus());
+            // 只有在没有任何服务器时才初始化默认服务器
+            if (this.mcpServers.size === 0) {
+                if (this.isDebugMode()) {
+                    console.log('[MCP-DEBUG] 没有任何服务器，初始化默认服务器');
+                }
+                this.initializeDefaultServers();
+            } else if (this.isDebugMode()) {
+                console.log('[MCP-DEBUG] 已有服务器，跳过默认服务器初始化');
+            }
+            
+            if (this.isDebugMode()) {
+                console.log('[MCP-DEBUG] MCP服务初始化完成');
+                console.log('[MCP-DEBUG] 最终状态:', this.getBridgeStatus());
+            }
         } catch (error) {
             console.error('[MCP-ERROR] MCP服务初始化失败:', error);
             // 即使初始化失败也要加载保存的服务器
             this.loadSavedServers();
+            // 只有在没有任何服务器时才初始化默认服务器
+            if (this.mcpServers.size === 0) {
+                if (this.isDebugMode()) {
+                    console.log('[MCP-DEBUG] 初始化失败后，初始化默认服务器');
+                }
+                this.initializeDefaultServers();
+            }
         }
     }
 
@@ -53,101 +96,23 @@ class MCPService {
     }
 
     async checkBridgeConnection() {
-        console.log('[MCP-DEBUG] 检查桥接服务器连接...', this.bridgeUrl);
-        
-        // 检查是否在Chrome扩展环境中
-        const isExtension = typeof chrome !== 'undefined' && chrome.runtime;
-        console.log('[MCP-DEBUG] 运行环境:', isExtension ? 'Chrome扩展' : '普通网页');
-        
+        console.log('[MCP-DEBUG] Checking bridge connection...');
         try {
-            const startTime = Date.now();
-            
-            // 在Chrome扩展中使用background script代理
-            if (isExtension) {
-                console.log('[MCP-DEBUG] 使用background代理发送请求');
-                const response = await this.sendBackgroundRequest(`${this.bridgeUrl}/api/health`);
-                const responseTime = Date.now() - startTime;
-                
-                console.log('[MCP-DEBUG] 代理响应:', {
-                    url: `${this.bridgeUrl}/api/health`,
-                    success: response.success,
-                    status: response.status,
-                    responseTime: responseTime + 'ms'
-                });
-                
-                if (response.success && response.ok) {
-                    this.bridgeConnected = true;
-                    console.log('[MCP-DEBUG] 桥接服务器健康检查成功:', response.data);
-                    console.log('[MCP-DEBUG] 桥接服务器连接状态: 已连接');
-                    return true;
-                } else {
-                    throw new Error(`Bridge server responding with status ${response.status}: ${response.statusText}`);
-                }
+            // Always use the background script proxy in an extension environment
+            const response = await this.sendBackgroundRequest(`${this.bridgeUrl}/api/health`);
+
+            if (response && response.success && response.ok) {
+                console.log('[MCP-DEBUG] Bridge connection successful:', response.data);
+                this.bridgeConnected = true;
+                return true;
             } else {
-                // 在普通网页中直接使用fetch
-                console.log('[MCP-DEBUG] 直接使用fetch发送请求');
-                const requestOptions = {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                };
-                
-                if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
-                    try {
-                        requestOptions.signal = AbortSignal.timeout(5000);
-                    } catch (e) {
-                        console.log('[MCP-DEBUG] AbortSignal.timeout不可用，使用手动超时');
-                    }
-                }
-                
-                const response = await fetch(`${this.bridgeUrl}/api/health`, requestOptions);
-                const responseTime = Date.now() - startTime;
-                
-                console.log('[MCP-DEBUG] 桥接服务器响应:', {
-                    url: `${this.bridgeUrl}/api/health`,
-                    status: response.status,
-                    statusText: response.statusText,
-                    ok: response.ok,
-                    responseTime: responseTime + 'ms'
-                });
-                
-                if (response.ok) {
-                    const healthData = await response.json();
-                    this.bridgeConnected = true;
-                    console.log('[MCP-DEBUG] 桥接服务器健康检查成功:', healthData);
-                    console.log('[MCP-DEBUG] 桥接服务器连接状态: 已连接');
-                    return true;
-                } else {
-                    throw new Error(`Bridge server responding with status ${response.status}: ${response.statusText}`);
-                }
+                console.error('[MCP-ERROR] Bridge responded with an error:', response?.error || `Status ${response?.status}`);
+                this.bridgeConnected = false;
+                return false;
             }
         } catch (error) {
+            console.error('[MCP-ERROR] Failed to send message to background script or fatal error:', error);
             this.bridgeConnected = false;
-            
-            // 详细的错误信息
-            const errorInfo = {
-                url: this.bridgeUrl,
-                error: error.message,
-                type: error.name,
-                stack: error.stack
-            };
-            
-            if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                console.error('[MCP-ERROR] 网络连接失败 - 可能是CORS、网络策略或服务器未运行:', errorInfo);
-                console.log('[MCP-HELP] 故障排查建议:');
-                console.log('1. 确认MCP桥接服务器正在运行: npm start');
-                console.log('2. 确认服务器地址正确:', this.bridgeUrl);
-                console.log('3. 检查Chrome扩展权限和CORS设置');
-                console.log('4. 尝试在浏览器直接访问:', `${this.bridgeUrl}/api/health`);
-            } else if (error.name === 'AbortError') {
-                console.error('[MCP-ERROR] 请求超时 - 桥接服务器响应太慢:', errorInfo);
-            } else {
-                console.warn('[MCP-WARN] 桥接服务器连接失败（这是正常的，如果你没有运行MCP桥接服务器）:', errorInfo);
-            }
-            
-            console.log('[MCP-DEBUG] 桥接服务器连接状态: 未连接');
-            console.log('[MCP-INFO] 要启用MCP工具，请运行: cd mcp-bridge && npm start');
             return false;
         }
     }
@@ -242,7 +207,7 @@ class MCPService {
         console.log('[MCP-DEBUG] 开始加载保存的服务器配置...');
         
         if (!this.savedServers) {
-            console.log('[MCP-DEBUG] 没有保存的服务器配置');
+            console.log('[MCP-DEBUG] 没有保存的服务器配置，保持现有服务器');
             return;
         }
         
@@ -264,8 +229,20 @@ class MCPService {
         
         console.log('[MCP-DEBUG] 处理', serverEntries.length, '个保存的服务器');
         
-        // 清空现有的服务器，确保只加载保存的服务器
-        this.mcpServers.clear();
+        // 清除现有的导入服务器，避免重复
+        if (serverEntries.length > 0) {
+            console.log('[MCP-DEBUG] 清除现有导入服务器，加载保存的配置');
+            const serversToDelete = [];
+            for (const [name, server] of this.mcpServers.entries()) {
+                if (server.imported) {
+                    serversToDelete.push(name);
+                }
+            }
+            
+            serversToDelete.forEach(name => {
+                this.mcpServers.delete(name);
+            });
+        }
         
         serverEntries.forEach(([serverName, serverConfig]) => {
             console.log('[MCP-DEBUG] 加载保存的服务器:', serverName, serverConfig);
@@ -956,7 +933,7 @@ class MCPService {
 
     // 格式化工具调用结果
     formatToolResult(toolName, result) {
-        const MAX_RESULT_LENGTH = 2000; // 限制结果长度
+        const MAX_RESULT_LENGTH = this.CONSTANTS.MAX_RESULT_LENGTH;
         
         let formattedContent = '';
         
@@ -1026,7 +1003,7 @@ class MCPService {
                 threshold: 0.5
             });
             
-            if (suggestion.confidence > 0.5) { // 从0.8降到0.5
+            if (suggestion.confidence > this.CONSTANTS.CONFIDENCE_THRESHOLD) {
                 try {
                     console.log('[MCP-DEBUG] 信心度超过阈值，尝试调用工具:', suggestion.tool.name);
                     const parameters = this.extractParametersFromMessage(message, suggestion.tool);

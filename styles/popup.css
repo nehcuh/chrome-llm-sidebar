@@ -1,96 +1,92 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+:root {
+    --primary-color: #007bff;
+    --primary-hover-color: #0056b3;
+    --secondary-color: #6c757d;
+    --secondary-hover-color: #5a6268;
+    --background-color: #f8f9fa;
+    --text-color: #333;
+    --border-color: #dee2e6;
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 body {
-    width: 350px;
-    min-height: 400px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: #333;
+    font-family: var(--font-family);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    margin: 0;
+    width: 250px;
 }
 
 .popup-container {
-    padding: 20px;
-}
-
-.header {
+    padding: 16px;
     text-align: center;
-    margin-bottom: 24px;
 }
 
 .header h2 {
-    color: white;
-    font-size: 24px;
-    font-weight: 600;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    color: var(--text-color);
 }
 
-.content {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.primary-btn, .secondary-btn {
+.content button {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 12px 20px;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
     border: none;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: 500;
+    border-radius: 6px;
+    font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    font-weight: 500;
+}
+
+.content button .icon {
+    margin-right: 8px;
+    font-size: 16px;
 }
 
 .primary-btn {
-    background: white;
-    color: #667eea;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    background-color: var(--primary-color);
+    color: white;
 }
 
 .primary-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+    background-color: var(--primary-hover-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .secondary-btn {
-    background: rgba(255,255,255,0.1);
-    color: white;
-    border: 1px solid rgba(255,255,255,0.2);
+    background-color: #fff;
+    color: var(--secondary-color);
+    border: 1px solid var(--border-color);
 }
 
 .secondary-btn:hover {
-    background: rgba(255,255,255,0.2);
-}
-
-.icon {
-    font-size: 18px;
+    background-color: #f1f3f5;
+    border-color: #ced4da;
 }
 
 .status {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 6px;
-    font-size: 14px;
-    color: white;
+    justify-content: center;
+    margin-top: 16px;
+    font-size: 12px;
+    color: #666;
 }
 
 .status-indicator {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #ff4757;
+    background-color: #dc3545; /* Red for not configured */
+    margin-right: 6px;
+    transition: background-color 0.3s;
 }
 
 .status-indicator.connected {
-    background: #2ed573;
+    background-color: #28a745; /* Green for configured */
 }

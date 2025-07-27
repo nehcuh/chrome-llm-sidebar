@@ -5,11 +5,14 @@
 ## 功能特性
 
 - ✅ **OpenAI兼容接口**: 支持任何兼容OpenAI API的服务
-- ✅ **侧边栏聊天**: 便捷的侧边栏界面
-- ✅ **用户配置**: 自定义API URL、API Key和Temperature
-- ✅ **网络搜索**: 集成DuckDuckGo搜索能力
-- ✅ **MCP支持**: 完整的Model Context Protocol支持，可连接各种工具
-- 🆕 **JSON配置**: 支持Claude Desktop兼容的JSON配置，一键导入MCP服务器
+- ✅ **侧边栏聊天**: 便捷的侧边栏界面，支持实时对话
+- ✅ **智能配置**: 自定义API URL、API Key、模型和Temperature
+- ✅ **网络搜索**: 集成DuckDuckGo搜索，获取实时信息
+- ✅ **MCP支持**: 完整的Model Context Protocol支持
+  - 支持文件系统、Git、搜索、数据库等工具
+  - 可视化配置界面，简单易用
+  - JSON配置导入，与Claude Desktop完全兼容
+  - 自动工具调用，智能增强对话
 
 ## 项目结构
 

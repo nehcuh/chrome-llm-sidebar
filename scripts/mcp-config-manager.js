@@ -289,13 +289,9 @@ class MCPConfigManager {
             const { config } = validatedConfig;
             const importedServers = [];
 
-            // 清除现有自定义服务器
-            const defaultServerNames = ['filesystem', 'git', 'brave-search', 'sqlite'];
-            for (const [name, server] of mcpService.mcpServers.entries()) {
-                if (server.custom || !defaultServerNames.includes(name)) {
-                    mcpService.mcpServers.delete(name);
-                }
-            }
+            // **FIX**: Clear all existing servers to ensure a clean import (replace instead of merge)
+            mcpService.mcpServers.clear();
+            console.log('[MCP-DEBUG] Cleared all existing servers before import.');
 
             // 导入新配置
             for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
@@ -303,16 +299,14 @@ class MCPConfigManager {
                     name: serverName,
                     description: serverConfig.description || `${serverName} MCP服务器`,
                     status: 'disconnected',
-                    imported: true
+                    imported: true // Mark as imported
                 };
 
-                // 根据类型设置不同的配置
                 if (serverConfig.type === 'streamable-http') {
                     server.type = 'streamable-http';
                     server.url = serverConfig.url;
                     server.headers = serverConfig.headers || {};
                 } else {
-                    // 默认为进程类型
                     server.command = serverConfig.command;
                     server.args = serverConfig.args || [];
                     server.env = serverConfig.env || {};
