@@ -1,0 +1,41 @@
+{
+  "name": "simple-ai-copilot",
+  "version": "1.0.0",
+  "description": "A simple Chrome sidebar AI copilot with OpenAI-compatible API, web search, and MCP support",
+  "main": "background.js",
+  "scripts": {
+    "build": "echo 'No build step required for this vanilla JS project'",
+    "test": "echo 'Tests not implemented yet'",
+    "lint": "echo 'Linting not configured'"
+  },
+  "keywords": [
+    "chrome-extension",
+    "ai",
+    "copilot",
+    "sidebar",
+    "openai",
+    "mcp",
+    "web-search"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/simple-ai-copilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/simple-ai-copilot/issues"
+  },
+  "homepage": "https://github.com/yourusername/simple-ai-copilot#readme",
+  "dependencies": {
+    "@modelcontextprotocol/server-brave-search": "^0.6.2",
+    "@modelcontextprotocol/server-filesystem": "^2025.7.1",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "browserslist": [
+    "Chrome >= 88"
+  ]
+}

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API配置测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; max-width: 600px; }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, textarea { width: 100%; padding: 8px; margin-bottom: 10px; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #005a87; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .loading { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>OpenAI API配置测试</h1>
+    
+    <div class="form-group">
+        <label>API URL:</label>
+        <input type="text" id="apiUrl" value="https://api.openai.com/v1" />
+    </div>
+    
+    <div class="form-group">
+        <label>API Key:</label>
+        <input type="password" id="apiKey" placeholder="sk-..." />
+    </div>
+    
+    <div class="form-group">
+        <label>Model:</label>
+        <input type="text" id="model" value="gpt-3.5-turbo" />
+    </div>
+    
+    <div class="form-group">
+        <label>测试消息:</label>
+        <input type="text" id="testMessage" value="Hello, how are you?" />
+    </div>
+    
+    <button onclick="testAPI()">测试API连接</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const model = document.getElementById('model').value.trim();
+            const testMessage = document.getElementById('testMessage').value.trim();
+            
+            if (!apiUrl || !apiKey || !model) {
+                showResult('error', '请填写所有必要字段');
+                return;
+            }
+            
+            showResult('loading', '正在测试API连接...');
+            
+            try {
+                const response = await fetch(`${apiUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [
+                            { role: 'user', content: testMessage }
+                        ],
+                        max_tokens: 50,
+                        temperature: 0.7
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                if (!response.ok) {
+                    let errorMessage = `API请求失败: ${response.status}`;
+                    
+                    try {
+                        const errorData = await response.json();
+                        console.log('Error data:', errorData);
+                        
+                        if (errorData.error) {
+                            errorMessage += ` - ${errorData.error.message || errorData.error.type || JSON.stringify(errorData.error)}`;
+                        }
+                    } catch (e) {
+                        errorMessage += ` ${response.statusText || ''}`;
+                    }
+                    
+                    // 添加具体建议
+                    if (response.status === 400) {
+                        errorMessage += '\n\n可能的原因：\n• API Key格式不正确\n• 模型名称错误\n• 请求参数有误';
+                    } else if (response.status === 401) {
+                        errorMessage += '\n\n认证失败，请检查API Key是否正确';
+                    } else if (response.status === 403) {
+                        errorMessage += '\n\n访问被拒绝，可能是权限或配额问题';
+                    } else if (response.status === 429) {
+                        errorMessage += '\n\n请求过于频繁，请稍后再试';
+                    }
+                    
+                    showResult('error', errorMessage);
+                    return;
+                }
+                
+                const data = await response.json();
+                console.log('Success data:', data);
+                
+                if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+                    showResult('error', 'API响应格式异常');
+                    return;
+                }
+                
+                const reply = data.choices[0].message.content;
+                showResult('success', `✅ API测试成功！\n\n响应: ${reply}\n\n配置正确，可以在Chrome扩展中使用。`);
+                
+            } catch (error) {
+                console.error('Test failed:', error);
+                showResult('error', `测试失败: ${error.message}`);
+            }
+        }
+        
+        function showResult(type, message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+    </script>
+</body>
+</html>

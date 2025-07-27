@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Copilot Sidebar</title>
+    <link rel="stylesheet" href="styles/sidebar.css">
+</head>
+<body>
+    <div id="app">
+        <div class="sidebar-header">
+            <h3>AI Copilot</h3>
+            <div class="header-actions">
+                <button id="settingsBtn" class="icon-btn" title="设置">
+                    <span>⚙️</span>
+                </button>
+                <button id="clearBtn" class="icon-btn" title="清除对话">
+                    <span>🗑️</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div id="chatMessages" class="chat-messages"></div>
+            
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <textarea 
+                        id="messageInput" 
+                        placeholder="输入你的问题..." 
+                        rows="1"
+                        maxlength="4000"
+                    ></textarea>
+                    <button id="sendBtn" class="send-btn" disabled>
+                        <span>➤</span>
+                    </button>
+                </div>
+                
+                <div class="input-options">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="webSearchEnabled">
+                        <span>启用网络搜索</span>
+                    </label>
+                    <div class="mcp-tools-section">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="mcpToolsEnabled" checked>
+                            <span>启用 MCP 工具</span>
+                        </label>
+                        <div class="mcp-service-selector" id="mcpServiceSelector">
+                            <div class="mcp-service-list" id="mcpServiceList">
+                                <!-- 动态生成的MCP服务选择项 -->
+                            </div>
+                            <div class="mcp-service-info">
+                                <small id="mcpServiceInfo">点击选择服务（支持多选）</small>
+                            </div>
+                            <div class="mcp-service-actions">
+                                <button id="selectAllMCP" class="mcp-action-btn">全选</button>
+                                <button id="clearAllMCP" class="mcp-action-btn">清空</button>
+                                <button id="refreshMCP" class="mcp-action-btn">刷新</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 设置面板 -->
+        <div id="settingsPanel" class="settings-panel hidden">
+            <div class="settings-header">
+                <h4>设置</h4>
+                <button id="closeSettings" class="close-btn">×</button>
+            </div>
+            
+            <div class="settings-content">
+                <div class="setting-group">
+                    <label for="apiUrl">API URL:</label>
+                    <input type="url" id="apiUrl" placeholder="https://api.openai.com/v1">
+                </div>
+                
+                <div class="setting-group">
+                    <label for="apiKey">API Key:</label>
+                    <input type="password" id="apiKey" placeholder="sk-...">
+                </div>
+                
+                <div class="setting-group">
+                    <label for="temperature">Temperature:</label>
+                    <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                    <span id="temperatureValue">0.7</span>
+                </div>
+                
+                <div class="setting-group">
+                    <label for="model">模型:</label>
+                    <input type="text" id="model" placeholder="gpt-3.5-turbo">
+                </div>
+                
+                <div class="setting-group">
+                    <h5>MCP 桥接服务器</h5>
+                    <div class="mcp-bridge-status" id="mcpBridgeStatus">
+                        <span class="status-indicator" id="bridgeStatusIndicator"></span>
+                        <span id="bridgeStatusText">检查中...</span>
+                    </div>
+                    <label for="bridgeUrl">桥接服务器URL:</label>
+                    <input type="url" id="bridgeUrl" placeholder="http://localhost:3001" value="http://localhost:3001">
+                    <button id="testBridgeConnection" class="secondary-btn" style="margin-top: 8px;">测试连接</button>
+                </div>
+                
+                <div class="setting-group">
+                    <h5>MCP 服务器配置</h5>
+                    <div class="mcp-config-tabs">
+                        <button class="tab-btn active" data-tab="visual">可视化配置</button>
+                        <button class="tab-btn" data-tab="json">JSON配置</button>
+                    </div>
+                    
+                    <!-- 可视化配置面板 -->
+                    <div id="mcpVisualPanel" class="mcp-config-panel">
+                        <div class="mcp-servers" id="mcpServers">
+                            <!-- MCP servers will be populated here -->
+                        </div>
+                        <button id="addMCPServer" class="secondary-btn" style="margin-top: 8px;">添加自定义服务器</button>
+                    </div>
+                    
+                    <!-- JSON配置面板 -->
+                    <div id="mcpJsonPanel" class="mcp-config-panel hidden">
+                        <div class="json-config-help">
+                            <p>粘贴你的MCP服务器配置JSON，格式与Claude Desktop兼容：</p>
+                            <button id="showConfigTemplate" class="help-btn">查看配置模板</button>
+                            <button id="loadSampleConfig" class="help-btn">加载示例配置</button>
+                        </div>
+                        <textarea 
+                            id="mcpJsonConfig" 
+                            placeholder="粘贴MCP服务器配置JSON..."
+                            rows="15"
+                        ></textarea>
+                        <div class="json-config-actions">
+                            <button id="validateMCPConfig" class="secondary-btn">验证配置</button>
+                            <button id="importMCPConfig" class="primary-btn">导入配置</button>
+                            <button id="exportMCPConfig" class="secondary-btn">导出配置</button>
+                        </div>
+                        <div id="configValidationResult" class="validation-result hidden"></div>
+                    </div>
+                </div>
+                
+                <div class="settings-actions">
+                    <button id="saveSettings" class="primary-btn">保存</button>
+                    <button id="resetSettings" class="secondary-btn">重置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="scripts/search-service.js"></script>
+    <script src="scripts/mcp-service.js"></script>
+    <script src="scripts/mcp-config-manager.js"></script>
+    <script src="scripts/sidebar.js"></script>
+</body>
+</html>

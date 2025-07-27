@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple AI Copilot</title>
+    <link rel="stylesheet" href="styles/popup.css">
+</head>
+<body>
+    <div class="popup-container">
+        <div class="header">
+            <h2>Simple AI Copilot</h2>
+        </div>
+        
+        <div class="content">
+            <button id="openSidebar" class="primary-btn">
+                <span class="icon">💬</span>
+                打开侧边栏
+            </button>
+            
+            <button id="openSettings" class="secondary-btn">
+                <span class="icon">⚙️</span>
+                设置
+            </button>
+            
+            <div class="status" id="connectionStatus">
+                <span class="status-indicator" id="statusIndicator"></span>
+                <span id="statusText">未连接</span>
+            </div>
+        </div>
+    </div>
+    
+    <script src="scripts/popup.js"></script>
+</body>
+</html>
