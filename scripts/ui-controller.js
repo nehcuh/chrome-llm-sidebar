@@ -11,6 +11,7 @@ class UIController {
         this.renderMessages();
         await this.refreshMCPServiceList();
         this.handleInputChange();
+        this.startMCPStatusMonitoring();
     }
 
     getElements() {
@@ -79,6 +80,7 @@ class UIController {
         
         elements.mcpToolsEnabled.addEventListener('change', (e) => {
             this.toggleMCPServiceSelector(e.target.checked);
+            this.updateMCPStatus();
         });
         elements.selectAllMCP.addEventListener('click', () => this.selectAllMCPServices());
         elements.clearAllMCP.addEventListener('click', () => this.clearAllMCPServices());
@@ -141,11 +143,10 @@ class UIController {
         const message = messageInput.value.trim();
         if (!message) return;
 
-        const webSearchEnabled = document.getElementById('webSearchEnabled').checked;
         const mcpToolsEnabled = document.getElementById('mcpToolsEnabled').checked;
         const useFunctionCalling = document.getElementById('useFunctionCalling').checked;
 
-        this.chatService.sendMessage(message, webSearchEnabled, mcpToolsEnabled, useFunctionCalling, () => this.settingsManager.getSelectedMCPServices());
+        this.chatService.sendMessage(message, mcpToolsEnabled, useFunctionCalling, () => this.settingsManager.getSelectedMCPServices());
         
         messageInput.value = '';
         this.handleInputChange();
@@ -376,6 +377,7 @@ class UIController {
         } finally {
             this.renderMCPServers();
             this.refreshMCPServiceList();
+            this.updateMCPStatus();
         }
     }
 
@@ -521,6 +523,58 @@ class UIController {
             } catch (error) {
                 alert(`同步失败: ${error.message}`);
             }
+        }
+    }
+
+    // MCP状态监控
+    startMCPStatusMonitoring() {
+        this.updateMCPStatus();
+        // 每10秒检查一次MCP状态
+        setInterval(() => this.updateMCPStatus(), 10000);
+    }
+
+    async updateMCPStatus() {
+        const indicator = document.getElementById('mcpStatusIndicator');
+        const icon = indicator.querySelector('.mcp-status-icon');
+        const text = indicator.querySelector('.mcp-status-text');
+        
+        if (!indicator) return;
+        
+        const mcpEnabled = document.getElementById('mcpToolsEnabled').checked;
+        
+        if (!mcpEnabled) {
+            indicator.className = 'mcp-status-indicator disconnected';
+            icon.textContent = '🔌';
+            text.textContent = 'MCP已禁用';
+            return;
+        }
+        
+        indicator.className = 'mcp-status-indicator loading';
+        icon.textContent = '⏳';
+        text.textContent = '检查连接...';
+        
+        try {
+            const bridgeConnected = this.settingsManager.mcpService.bridgeConnected;
+            const servers = this.settingsManager.mcpService.getAllServers();
+            const connectedServers = servers.filter(s => s.status === 'connected').length;
+            
+            if (bridgeConnected && connectedServers > 0) {
+                indicator.className = 'mcp-status-indicator connected';
+                icon.textContent = '✅';
+                text.textContent = `${connectedServers}个MCP服务已连接`;
+            } else if (bridgeConnected) {
+                indicator.className = 'mcp-status-indicator disconnected';
+                icon.textContent = '🔌';
+                text.textContent = '桥接已连接，无MCP服务';
+            } else {
+                indicator.className = 'mcp-status-indicator disconnected';
+                icon.textContent = '🔌';
+                text.textContent = 'MCP未连接';
+            }
+        } catch (error) {
+            indicator.className = 'mcp-status-indicator error';
+            icon.textContent = '❌';
+            text.textContent = '连接错误';
         }
     }
 

@@ -37,10 +37,6 @@
                 </div>
                 
                 <div class="input-options">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="webSearchEnabled">
-                        <span>启用网络搜索</span>
-                    </label>
                     <div class="mcp-tools-section">
                         <label class="checkbox-label">
                             <input type="checkbox" id="mcpToolsEnabled" checked>
@@ -51,6 +47,10 @@
                             <span>使用 Function Calling</span>
                         </label>
                         <div class="mcp-service-selector" id="mcpServiceSelector">
+                            <div class="mcp-status-indicator" id="mcpStatusIndicator">
+                                <span class="mcp-status-icon">🔌</span>
+                                <span class="mcp-status-text">检查中...</span>
+                            </div>
                             <div class="mcp-service-list" id="mcpServiceList">
                                 <!-- 动态生成的MCP服务选择项 -->
                             </div>
@@ -162,7 +162,6 @@
         </div>
     </div>
     
-    <script src="scripts/search-service.js"></script>
     <script src="scripts/mcp-service.js"></script>
     <script src="scripts/mcp-config-manager.js"></script>
     <script src="scripts/chat-service.js"></script>

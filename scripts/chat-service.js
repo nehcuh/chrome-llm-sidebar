@@ -2,7 +2,6 @@ class ChatService {
     constructor(mcpService) {
         this.messages = [];
         this.config = {}; // This will be initialized by the main app
-        this.searchService = new SearchService();
         this.mcpService = mcpService; // Use the provided instance
     }
 
@@ -49,7 +48,7 @@ class ChatService {
         await this.saveHistory();
     }
 
-    async sendMessage(messageText, webSearchEnabled, mcpToolsEnabled, useFunctionCalling, getSelectedMCPServices) {
+    async sendMessage(messageText, mcpToolsEnabled, useFunctionCalling, getSelectedMCPServices) {
         const userMessage = this.addMessage('user', messageText);
         
         // Immediately render user message
@@ -62,10 +61,6 @@ class ChatService {
             let finalMessage = messageText;
             let toolsUsed = [];
             let responseText = '';
-
-            if (webSearchEnabled) {
-                finalMessage = await this.enhanceMessageWithWebSearch(messageText);
-            }
 
             // Determine if we should use Function Calling or the old MCP enhancement method
             const shouldUseFunctionCalling = mcpToolsEnabled && useFunctionCalling && this.mcpService.bridgeConnected;
@@ -149,15 +144,6 @@ class ChatService {
 
         const data = await response.json();
         return data;
-    }
-    
-    async enhanceMessageWithWebSearch(message) {
-        if (this.searchService.shouldPerformSearch(message)) {
-            const searchQuery = this.searchService.extractSearchQuery(message);
-            const searchResults = await this.searchService.search(searchQuery);
-            return `${message}\n\n以下是相关的搜索信息：\n${searchResults}\n\n请基于上述信息回答我的问题。`;
-        }
-        return message;
     }
 
     formatMessageForLLM(originalMessage, toolResults) {
