@@ -650,53 +650,88 @@ class UIController {
         const isMac = navigator.platform.indexOf('Mac') > -1;
         
         let command = '';
+        let platformName = '';
+        
         if (isWindows) {
             command = 'cd mcp-bridge && npm start';
+            platformName = 'Windows';
         } else if (isMac) {
             command = 'cd mcp-bridge && npm start';
+            platformName = 'macOS';
         } else {
             command = 'cd mcp-bridge && npm start';
+            platformName = 'Linux';
         }
 
         const guideHTML = `
             <div class="startup-guide">
                 <h3>🚀 手动启动桥接服务器</h3>
+                <p><strong>检测到您的平台：${platformName}</strong></p>
                 <p>由于浏览器安全限制，需要手动启动桥接服务器。请按照以下步骤操作：</p>
                 
                 <div class="step">
                     <h4>步骤 1: 打开终端/命令提示符</h4>
-                    <p>• Windows: 按 <kbd>Win</kbd> + <kbd>R</kbd>，输入 <code>cmd</code></p>
-                    <p>• macOS: 按 <kbd>Cmd</kbd> + <kbd>空格</kbd>，输入 <code>Terminal</code></p>
-                    <p>• Linux: 按 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd></p>
+                    ${isWindows ? `
+                    <p>• 按 <kbd>Win</kbd> + <kbd>R</kbd>，输入 <code>cmd</code></p>
+                    <p>• 或者在开始菜单中搜索"命令提示符"</p>
+                    ` : isMac ? `
+                    <p>• 按 <kbd>Cmd</kbd> + <kbd>空格</kbd>，输入 <code>Terminal</code></p>
+                    <p>• 或者在应用程序 > 实用工具中找到终端</p>
+                    ` : `
+                    <p>• 按 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd></p>
+                    <p>• 或者在应用程序菜单中找到终端</p>
+                    `}
                 </div>
                 
                 <div class="step">
                     <h4>步骤 2: 导航到项目目录</h4>
                     <p><code>cd /path/to/your/chrome-llm-sidebar</code></p>
+                    <p class="hint">💡 请替换为您的实际项目路径</p>
                 </div>
                 
                 <div class="step">
-                    <h4>步骤 3: 启动桥接服务器</h4>
+                    <h4>步骤 3: 首次运行（仅第一次）</h4>
+                    <p><code>cd mcp-bridge && npm install</code></p>
+                    <p class="hint">💡 安装依赖包，只需要执行一次</p>
+                </div>
+                
+                <div class="step">
+                    <h4>步骤 4: 启动桥接服务器</h4>
                     <p><code>${command}</code></p>
+                    <p class="hint">💡 保持终端窗口开启以维持服务器运行</p>
                 </div>
                 
                 <div class="step">
-                    <h4>步骤 4: 等待启动完成</h4>
-                    <p>看到类似 "MCP Bridge Server running on port 3001" 的消息即表示启动成功</p>
+                    <h4>步骤 5: 验证启动成功</h4>
+                    <p>看到类似以下消息即表示启动成功：</p>
+                    <div class="success-message">
+                        <code>MCP Bridge Server running on port 3001</code>
+                    </div>
                 </div>
                 
                 <div class="quick-actions">
-                    <button onclick="app.uiController.copyStartupCommand('${command}')">📋 复制启动命令</button>
-                    <button onclick="app.uiController.testConnectionAfterDelay()">⏱️ 30秒后自动测试连接</button>
+                    <button class="copy-command-btn" data-command="${command}">📋 复制启动命令</button>
+                    <button class="copy-all-btn" data-commands="cd mcp-bridge && npm install${command}">📋 复制完整命令</button>
+                    <button class="test-connection-btn">⏱️ 30秒后自动测试连接</button>
                 </div>
                 
                 <div class="tips">
-                    <h4>💡 提示：</h4>
+                    <h4>💡 重要提示：</h4>
                     <ul>
                         <li>确保已安装 Node.js (版本 14 或更高)</li>
-                        <li>首次运行前需要在 mcp-bridge 目录执行 <code>npm install</code></li>
-                        <li>保持终端窗口开启以维持服务器运行</li>
-                        <li>服务器启动后点击"测试连接"验证</li>
+                        <li>首次运行前必须执行 <code>npm install</code></li>
+                        <li>保持终端窗口开启，关闭终端服务器将停止</li>
+                        <li>如果端口3001被占用，可以修改配置文件中的端口号</li>
+                        <li>启动后返回此页面点击"测试连接"验证</li>
+                    </ul>
+                </div>
+                
+                <div class="troubleshooting">
+                    <h4>🔧 常见问题：</h4>
+                    <ul>
+                        <li><strong>命令不存在：</strong>请确保 Node.js 已正确安装</li>
+                        <li><strong>端口被占用：</strong>修改 mcp-bridge/server.js 中的端口号</li>
+                        <li><strong>权限问题：</strong>macOS/Linux 用户可能需要使用 <code>sudo</code></li>
                     </ul>
                 </div>
             </div>
@@ -709,7 +744,7 @@ class UIController {
             <div class="modal-content">
                 <div class="modal-header">
                     <h2>桥接服务器启动指导</h2>
-                    <button class="close-btn" onclick="this.closest('.startup-guide-modal').remove()">×</button>
+                    <button class="close-btn" type="button">×</button>
                 </div>
                 <div class="modal-body">
                     ${guideHTML}
@@ -719,39 +754,144 @@ class UIController {
 
         document.body.appendChild(modal);
         
+        // 存储模态框引用
+        this.currentModal = modal;
+        
+        // 绑定关闭事件
+        const closeBtn = modal.querySelector('.close-btn');
+        closeBtn.addEventListener('click', () => {
+            this.closeStartupModal();
+        });
+        
+        // 绑定复制命令事件
+        const copyBtn = modal.querySelector('.copy-command-btn');
+        copyBtn.addEventListener('click', () => {
+            const command = copyBtn.dataset.command;
+            this.copyStartupCommand(command);
+        });
+        
+        // 绑定复制所有命令事件
+        const copyAllBtn = modal.querySelector('.copy-all-btn');
+        if (copyAllBtn) {
+            copyAllBtn.addEventListener('click', () => {
+                const commands = copyAllBtn.dataset.commands;
+                this.copyStartupCommand(commands);
+            });
+        }
+        
+        // 绑定测试连接事件
+        const testBtn = modal.querySelector('.test-connection-btn');
+        testBtn.addEventListener('click', () => {
+            this.testConnectionAfterDelay();
+        });
+        
         // 点击背景关闭
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
-                modal.remove();
+                this.closeStartupModal();
             }
         });
+        
+        // ESC键关闭
+        const handleEscKey = (e) => {
+            if (e.key === 'Escape' && this.currentModal) {
+                this.closeStartupModal();
+                document.removeEventListener('keydown', handleEscKey);
+            }
+        };
+        document.addEventListener('keydown', handleEscKey);
+    }
+
+    // 关闭启动模态框
+    closeStartupModal() {
+        if (this.currentModal) {
+            this.currentModal.remove();
+            this.currentModal = null;
+        }
     }
 
     // 复制启动命令到剪贴板
     async copyStartupCommand(command) {
         try {
             await navigator.clipboard.writeText(command);
-            alert('启动命令已复制到剪贴板！');
+            this.showNotification('✅ 启动命令已复制到剪贴板！', 'success');
         } catch (error) {
-            alert('复制失败，请手动复制命令');
+            console.error('复制失败:', error);
+            // 降级方案：创建文本选择
+            const textArea = document.createElement('textarea');
+            textArea.value = command;
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                this.showNotification('✅ 启动命令已复制到剪贴板！', 'success');
+            } catch (execError) {
+                this.showNotification('❌ 复制失败，请手动复制命令', 'error');
+            }
+            
+            document.body.removeChild(textArea);
         }
+    }
+
+    // 显示通知
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close" type="button">×</button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // 添加动画效果
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 10);
+        
+        // 绑定关闭事件
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            this.hideNotification(notification);
+        });
+        
+        // 自动关闭
+        setTimeout(() => {
+            this.hideNotification(notification);
+        }, 3000);
+    }
+
+    // 隐藏通知
+    hideNotification(notification) {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
     }
 
     // 延迟测试连接
     testConnectionAfterDelay() {
-        alert('将在30秒后自动测试连接，请确保在此期间启动桥接服务器...');
+        this.showNotification('⏱️ 将在30秒后自动测试连接，请确保在此期间启动桥接服务器...', 'info');
         
         setTimeout(async () => {
             try {
                 const connected = await this.settingsManager.mcpService.checkBridgeConnection();
                 if (connected) {
                     this.updateBridgeStatus(true);
-                    alert('桥接服务器连接成功！');
+                    this.updateMCPStatus();
+                    this.showNotification('✅ 桥接服务器连接成功！', 'success');
                 } else {
-                    alert('桥接服务器仍未连接，请检查服务器是否正常启动');
+                    this.showNotification('❌ 桥接服务器仍未连接，请检查服务器是否正常启动', 'error');
                 }
             } catch (error) {
-                alert('连接测试失败: ' + error.message);
+                this.showNotification('❌ 连接测试失败: ' + error.message, 'error');
             }
         }, 30000);
     }

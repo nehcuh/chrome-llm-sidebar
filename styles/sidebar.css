@@ -1160,6 +1160,119 @@ input:checked + .mcp-slider:before { transform: translateX(18px); }
     color: #856404;
 }
 
+.startup-guide .hint {
+    color: var(--neutral-600);
+    font-size: var(--font-size-xs);
+    font-style: italic;
+    margin-top: var(--spacing-sm);
+}
+
+.startup-guide .success-message {
+    background: var(--success-100);
+    border: 1px solid var(--success-300);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin: var(--spacing-sm) 0;
+    font-family: monospace;
+    font-size: var(--font-size-sm);
+    color: var(--success-700);
+}
+
+.startup-guide .troubleshooting {
+    background: var(--neutral-100);
+    border: 1px solid var(--neutral-300);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+}
+
+.startup-guide .troubleshooting h4 {
+    color: var(--neutral-700);
+    margin-top: 0;
+    margin-bottom: var(--spacing-md);
+}
+
+.startup-guide .troubleshooting ul {
+    margin: 0;
+    padding-left: var(--spacing-lg);
+}
+
+.startup-guide .troubleshooting li {
+    margin-bottom: var(--spacing-sm);
+    line-height: 1.5;
+    color: var(--neutral-600);
+}
+
+.startup-guide .troubleshooting strong {
+    color: var(--neutral-800);
+}
+
+/* 通知样式 */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10001;
+    min-width: 300px;
+    max-width: 400px;
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2xl);
+    border: 1px solid var(--neutral-200);
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all var(--transition-normal);
+    overflow: hidden;
+}
+
+.notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.notification-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.notification-message {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    font-size: var(--font-size-lg);
+    cursor: pointer;
+    color: var(--neutral-500);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    margin-left: var(--spacing-md);
+}
+
+.notification-close:hover {
+    background: var(--neutral-100);
+    color: var(--neutral-700);
+}
+
+.notification-success {
+    border-left: 4px solid var(--success-500);
+}
+
+.notification-error {
+    border-left: 4px solid var(--error-500);
+}
+
+.notification-info {
+    border-left: 4px solid var(--info-500);
+}
+
 /* 响应式设计优化 */
 @media (max-width: 640px) {
     .startup-guide-modal .modal-content {
@@ -1177,6 +1290,13 @@ input:checked + .mcp-slider:before { transform: translateX(18px); }
     
     .startup-guide .quick-actions button {
         width: 100%;
+    }
+    
+    .notification {
+        right: 10px;
+        left: 10px;
+        min-width: auto;
+        max-width: none;
     }
 }
 }
