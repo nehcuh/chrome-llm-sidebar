@@ -11,6 +11,7 @@ class UIController {
         this.renderMessages();
         await this.refreshMCPServiceList();
         this.handleInputChange();
+        this.startMCPStatusMonitoring();
     }
 
     getElements() {
@@ -32,6 +33,7 @@ class UIController {
             validateMCPConfig: document.getElementById('validateMCPConfig'),
             importMCPConfig: document.getElementById('importMCPConfig'),
             exportMCPConfig: document.getElementById('exportMCPConfig'),
+            startBridgeServer: document.getElementById('startBridgeServer'),
         };
     }
 
@@ -78,6 +80,7 @@ class UIController {
         
         elements.mcpToolsEnabled.addEventListener('change', (e) => {
             this.toggleMCPServiceSelector(e.target.checked);
+            this.updateMCPStatus();
         });
         elements.selectAllMCP.addEventListener('click', () => this.selectAllMCPServices());
         elements.clearAllMCP.addEventListener('click', () => this.clearAllMCPServices());
@@ -92,6 +95,19 @@ class UIController {
         elements.validateMCPConfig.addEventListener('click', () => this.validateMCPConfig());
         elements.importMCPConfig.addEventListener('click', () => this.importMCPConfig());
         elements.exportMCPConfig.addEventListener('click', () => this.exportMCPConfig());
+        elements.startBridgeServer.addEventListener('click', () => this.startBridgeServer());
+        
+        // 文件上传处理
+        const configFileInput = document.getElementById('importConfigFile');
+        if (configFileInput) {
+            configFileInput.addEventListener('change', (e) => this.handleConfigFileUpload(e));
+        }
+        
+        // 实时配置同步 - JSON输入框变化时自动验证和预览
+        const jsonConfigTextarea = document.getElementById('mcpJsonConfig');
+        if (jsonConfigTextarea) {
+            jsonConfigTextarea.addEventListener('input', this.debounce(() => this.handleJsonConfigChange(), 1000));
+        }
     }
 
     async testBridgeConnection() {
@@ -127,10 +143,10 @@ class UIController {
         const message = messageInput.value.trim();
         if (!message) return;
 
-        const webSearchEnabled = document.getElementById('webSearchEnabled').checked;
         const mcpToolsEnabled = document.getElementById('mcpToolsEnabled').checked;
+        const useFunctionCalling = document.getElementById('useFunctionCalling').checked;
 
-        this.chatService.sendMessage(message, webSearchEnabled, mcpToolsEnabled, () => this.settingsManager.getSelectedMCPServices());
+        this.chatService.sendMessage(message, mcpToolsEnabled, useFunctionCalling, () => this.settingsManager.getSelectedMCPServices());
         
         messageInput.value = '';
         this.handleInputChange();
@@ -158,6 +174,12 @@ class UIController {
         messageElement.setAttribute('data-message-id', message.id);
 
         let content = message.content;
+        
+        // Ensure content is a string
+        if (typeof content !== 'string') {
+            content = JSON.stringify(content, null, 2);
+        }
+        
         const escapeHtml = (unsafe) => unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         content = escapeHtml(content);
         content = content.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
@@ -281,10 +303,8 @@ class UIController {
         if (!validationResult.valid) return;
 
         if (confirm('导入配置将替换现有的MCP服务器设置，确认继续？')) {
-            const importResult = this.settingsManager.mcpConfigManager.importConfig(validationResult, this.settingsManager.mcpService);
+            const importResult = this.settingsManager.mcpConfigManager.importConfigAutoSync(validationResult, this.settingsManager.mcpService, this);
             if (importResult.success) {
-                await this.settingsManager.mcpService.saveMCPConfig();
-                this.renderMCPServers();
                 this.switchMCPTab('visual');
                 alert(importResult.message);
             } else {
@@ -357,6 +377,7 @@ class UIController {
         } finally {
             this.renderMCPServers();
             this.refreshMCPServiceList();
+            this.updateMCPStatus();
         }
     }
 
@@ -368,5 +389,523 @@ class UIController {
             'error': '错误'
         };
         return statusMap[status] || status;
+    }
+
+    // 处理配置文件上传
+    async handleConfigFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (!file.name.endsWith('.json')) {
+            alert('请选择JSON格式的配置文件');
+            return;
+        }
+
+        const button = event.target.parentElement;
+        const originalText = button.querySelector('span').textContent;
+        button.querySelector('span').textContent = '上传中...';
+        button.disabled = true;
+
+        try {
+            const importResult = await this.settingsManager.mcpConfigManager.importConfigFromFile(
+                file, 
+                this.settingsManager.mcpService, 
+                this
+            );
+
+            if (importResult.success) {
+                alert(importResult.message);
+                this.switchMCPTab('visual');
+            } else {
+                alert(importResult.error);
+            }
+        } catch (error) {
+            alert(`文件上传失败: ${error.message}`);
+        } finally {
+            button.querySelector('span').textContent = originalText;
+            button.disabled = false;
+            event.target.value = ''; // 清空文件输入
+        }
+    }
+
+    // 处理JSON配置变化（实时同步）
+    handleJsonConfigChange() {
+        const jsonTextarea = document.getElementById('mcpJsonConfig');
+        const configText = jsonTextarea.value.trim();
+
+        if (!configText) {
+            this.hideAutoSyncPreview();
+            return;
+        }
+
+        try {
+            const validationResult = this.settingsManager.mcpConfigManager.validateConfig(configText);
+            
+            if (validationResult.valid) {
+                this.showAutoSyncPreview(validationResult.config);
+            } else {
+                this.hideAutoSyncPreview();
+            }
+        } catch (error) {
+            // 静默处理JSON语法错误
+            this.hideAutoSyncPreview();
+        }
+    }
+
+    // 显示自动同步预览
+    showAutoSyncPreview(config) {
+        let previewPanel = document.getElementById('autoSyncPreview');
+        
+        if (!previewPanel) {
+            previewPanel = document.createElement('div');
+            previewPanel.id = 'autoSyncPreview';
+            previewPanel.className = 'auto-sync-preview';
+            
+            const jsonPanel = document.getElementById('mcpJsonPanel');
+            jsonPanel.appendChild(previewPanel);
+        }
+
+        const serverCount = Object.keys(config.mcpServers || {}).length;
+        const serverNames = Object.keys(config.mcpServers || {}).slice(0, 3).join(', ');
+        const moreText = serverCount > 3 ? ` 等${serverCount}个` : '';
+
+        previewPanel.innerHTML = `
+            <div class="preview-header">
+                <span class="preview-title">🔄 配置预览</span>
+                <button class="preview-sync-btn" onclick="app.uiController.applyAutoSyncConfig()">
+                    ⚡ 立即同步
+                </button>
+            </div>
+            <div class="preview-content">
+                <p>检测到有效的MCP配置，包含 <strong>${serverCount}</strong> 个服务器:</p>
+                <p><em>${serverNames}${moreText}</em></p>
+                <p class="preview-hint">💡 保存后将自动同步到可视化界面</p>
+            </div>
+        `;
+
+        // 存储当前配置供同步使用
+        this.pendingAutoSyncConfig = config;
+    }
+
+    // 隐藏自动同步预览
+    hideAutoSyncPreview() {
+        const previewPanel = document.getElementById('autoSyncPreview');
+        if (previewPanel) {
+            previewPanel.remove();
+        }
+        this.pendingAutoSyncConfig = null;
+    }
+
+    // 应用自动同步配置
+    async applyAutoSyncConfig() {
+        if (!this.pendingAutoSyncConfig) return;
+
+        if (confirm('确定要应用此配置并同步到可视化界面吗？')) {
+            try {
+                const validationResult = {
+                    valid: true,
+                    config: this.pendingAutoSyncConfig
+                };
+
+                const importResult = this.settingsManager.mcpConfigManager.importConfigAutoSync(
+                    validationResult, 
+                    this.settingsManager.mcpService, 
+                    this
+                );
+
+                if (importResult.success) {
+                    this.hideAutoSyncPreview();
+                    alert('配置已同步到可视化界面！');
+                    this.switchMCPTab('visual');
+                } else {
+                    alert(importResult.error);
+                }
+            } catch (error) {
+                alert(`同步失败: ${error.message}`);
+            }
+        }
+    }
+
+    // MCP状态监控
+    startMCPStatusMonitoring() {
+        this.updateMCPStatus();
+        // 每10秒检查一次MCP状态
+        setInterval(() => this.updateMCPStatus(), 10000);
+    }
+
+    async updateMCPStatus() {
+        const indicator = document.getElementById('mcpStatusIndicator');
+        const icon = indicator.querySelector('.mcp-status-icon');
+        const text = indicator.querySelector('.mcp-status-text');
+        
+        if (!indicator) return;
+        
+        const mcpEnabled = document.getElementById('mcpToolsEnabled').checked;
+        
+        if (!mcpEnabled) {
+            indicator.className = 'mcp-status-indicator disconnected';
+            icon.textContent = '🔌';
+            text.textContent = 'MCP已禁用';
+            return;
+        }
+        
+        indicator.className = 'mcp-status-indicator loading';
+        icon.textContent = '⏳';
+        text.textContent = '检查连接...';
+        
+        try {
+            const bridgeConnected = this.settingsManager.mcpService.bridgeConnected;
+            const servers = this.settingsManager.mcpService.getAllServers();
+            const connectedServers = servers.filter(s => s.status === 'connected').length;
+            
+            if (bridgeConnected && connectedServers > 0) {
+                indicator.className = 'mcp-status-indicator connected';
+                icon.textContent = '✅';
+                text.textContent = `${connectedServers}个MCP服务已连接`;
+            } else if (bridgeConnected) {
+                indicator.className = 'mcp-status-indicator disconnected';
+                icon.textContent = '🔌';
+                text.textContent = '桥接已连接，无MCP服务';
+            } else {
+                indicator.className = 'mcp-status-indicator disconnected';
+                icon.textContent = '🔌';
+                text.textContent = 'MCP未连接';
+            }
+        } catch (error) {
+            indicator.className = 'mcp-status-indicator error';
+            icon.textContent = '❌';
+            text.textContent = '连接错误';
+        }
+    }
+
+    // 一键启动桥接服务器
+    async startBridgeServer() {
+        const button = document.getElementById('startBridgeServer');
+        const originalText = button.textContent;
+        
+        button.textContent = '启动中...';
+        button.disabled = true;
+
+        try {
+            // 方法1: 尝试通过Chrome扩展协议启动（如果有相应的Native Messaging host）
+            const launched = await this.tryLaunchViaNativeMessaging();
+            
+            if (launched) {
+                // 等待服务器启动
+                await this.waitForBridgeStartup();
+                alert('桥接服务器启动成功！');
+            } else {
+                // 方法2: 提供手动启动指导
+                this.showManualStartupGuide();
+            }
+        } catch (error) {
+            console.error('启动桥接服务器失败:', error);
+            this.showManualStartupGuide();
+        } finally {
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+    }
+
+    // 尝试通过Native Messaging启动
+    async tryLaunchViaNativeMessaging() {
+        try {
+            // 检查是否有Native Messaging host
+            if (typeof chrome !== 'undefined' && chrome.runtime) {
+                // 这里可以连接到Native Messaging host来启动服务
+                // 由于安全限制，这需要用户预先安装相应的host应用
+                console.log('[MCP-DEBUG] 尝试通过Native Messaging启动服务器...');
+                return false; // 暂时返回false，显示手动启动指导
+            }
+            return false;
+        } catch (error) {
+            console.error('Native Messaging启动失败:', error);
+            return false;
+        }
+    }
+
+    // 等待桥接服务器启动
+    async waitForBridgeStartup(maxAttempts = 30) {
+        for (let i = 0; i < maxAttempts; i++) {
+            try {
+                const connected = await this.settingsManager.mcpService.checkBridgeConnection();
+                if (connected) {
+                    this.updateBridgeStatus(true);
+                    return true;
+                }
+            } catch (error) {
+                // 忽略连接错误，继续尝试
+            }
+            
+            // 等待1秒
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        throw new Error('等待桥接服务器启动超时');
+    }
+
+    // 显示手动启动指导
+    showManualStartupGuide() {
+        const isWindows = navigator.platform.indexOf('Win') > -1;
+        const isMac = navigator.platform.indexOf('Mac') > -1;
+        
+        let command = '';
+        let platformName = '';
+        
+        if (isWindows) {
+            command = 'cd mcp-bridge && npm start';
+            platformName = 'Windows';
+        } else if (isMac) {
+            command = 'cd mcp-bridge && npm start';
+            platformName = 'macOS';
+        } else {
+            command = 'cd mcp-bridge && npm start';
+            platformName = 'Linux';
+        }
+
+        const guideHTML = `
+            <div class="startup-guide">
+                <h3>🚀 手动启动桥接服务器</h3>
+                <p><strong>检测到您的平台：${platformName}</strong></p>
+                <p>由于浏览器安全限制，需要手动启动桥接服务器。请按照以下步骤操作：</p>
+                
+                <div class="step">
+                    <h4>步骤 1: 打开终端/命令提示符</h4>
+                    ${isWindows ? `
+                    <p>• 按 <kbd>Win</kbd> + <kbd>R</kbd>，输入 <code>cmd</code></p>
+                    <p>• 或者在开始菜单中搜索"命令提示符"</p>
+                    ` : isMac ? `
+                    <p>• 按 <kbd>Cmd</kbd> + <kbd>空格</kbd>，输入 <code>Terminal</code></p>
+                    <p>• 或者在应用程序 > 实用工具中找到终端</p>
+                    ` : `
+                    <p>• 按 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd></p>
+                    <p>• 或者在应用程序菜单中找到终端</p>
+                    `}
+                </div>
+                
+                <div class="step">
+                    <h4>步骤 2: 导航到项目目录</h4>
+                    <p><code>cd /path/to/your/chrome-llm-sidebar</code></p>
+                    <p class="hint">💡 请替换为您的实际项目路径</p>
+                </div>
+                
+                <div class="step">
+                    <h4>步骤 3: 首次运行（仅第一次）</h4>
+                    <p><code>cd mcp-bridge && npm install</code></p>
+                    <p class="hint">💡 安装依赖包，只需要执行一次</p>
+                </div>
+                
+                <div class="step">
+                    <h4>步骤 4: 启动桥接服务器</h4>
+                    <p><code>${command}</code></p>
+                    <p class="hint">💡 保持终端窗口开启以维持服务器运行</p>
+                </div>
+                
+                <div class="step">
+                    <h4>步骤 5: 验证启动成功</h4>
+                    <p>看到类似以下消息即表示启动成功：</p>
+                    <div class="success-message">
+                        <code>MCP Bridge Server running on port 3001</code>
+                    </div>
+                </div>
+                
+                <div class="quick-actions">
+                    <button class="copy-command-btn" data-command="${command}">📋 复制启动命令</button>
+                    <button class="copy-all-btn" data-commands="cd mcp-bridge && npm install${command}">📋 复制完整命令</button>
+                    <button class="test-connection-btn">⏱️ 30秒后自动测试连接</button>
+                </div>
+                
+                <div class="tips">
+                    <h4>💡 重要提示：</h4>
+                    <ul>
+                        <li>确保已安装 Node.js (版本 14 或更高)</li>
+                        <li>首次运行前必须执行 <code>npm install</code></li>
+                        <li>保持终端窗口开启，关闭终端服务器将停止</li>
+                        <li>如果端口3001被占用，可以修改配置文件中的端口号</li>
+                        <li>启动后返回此页面点击"测试连接"验证</li>
+                    </ul>
+                </div>
+                
+                <div class="troubleshooting">
+                    <h4>🔧 常见问题：</h4>
+                    <ul>
+                        <li><strong>命令不存在：</strong>请确保 Node.js 已正确安装</li>
+                        <li><strong>端口被占用：</strong>修改 mcp-bridge/server.js 中的端口号</li>
+                        <li><strong>权限问题：</strong>macOS/Linux 用户可能需要使用 <code>sudo</code></li>
+                    </ul>
+                </div>
+            </div>
+        `;
+
+        // 创建模态框显示指导
+        const modal = document.createElement('div');
+        modal.className = 'startup-guide-modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>桥接服务器启动指导</h2>
+                    <button class="close-btn" type="button">×</button>
+                </div>
+                <div class="modal-body">
+                    ${guideHTML}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        
+        // 存储模态框引用
+        this.currentModal = modal;
+        
+        // 绑定关闭事件
+        const closeBtn = modal.querySelector('.close-btn');
+        closeBtn.addEventListener('click', () => {
+            this.closeStartupModal();
+        });
+        
+        // 绑定复制命令事件
+        const copyBtn = modal.querySelector('.copy-command-btn');
+        copyBtn.addEventListener('click', () => {
+            const command = copyBtn.dataset.command;
+            this.copyStartupCommand(command);
+        });
+        
+        // 绑定复制所有命令事件
+        const copyAllBtn = modal.querySelector('.copy-all-btn');
+        if (copyAllBtn) {
+            copyAllBtn.addEventListener('click', () => {
+                const commands = copyAllBtn.dataset.commands;
+                this.copyStartupCommand(commands);
+            });
+        }
+        
+        // 绑定测试连接事件
+        const testBtn = modal.querySelector('.test-connection-btn');
+        testBtn.addEventListener('click', () => {
+            this.testConnectionAfterDelay();
+        });
+        
+        // 点击背景关闭
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeStartupModal();
+            }
+        });
+        
+        // ESC键关闭
+        const handleEscKey = (e) => {
+            if (e.key === 'Escape' && this.currentModal) {
+                this.closeStartupModal();
+                document.removeEventListener('keydown', handleEscKey);
+            }
+        };
+        document.addEventListener('keydown', handleEscKey);
+    }
+
+    // 关闭启动模态框
+    closeStartupModal() {
+        if (this.currentModal) {
+            this.currentModal.remove();
+            this.currentModal = null;
+        }
+    }
+
+    // 复制启动命令到剪贴板
+    async copyStartupCommand(command) {
+        try {
+            await navigator.clipboard.writeText(command);
+            this.showNotification('✅ 启动命令已复制到剪贴板！', 'success');
+        } catch (error) {
+            console.error('复制失败:', error);
+            // 降级方案：创建文本选择
+            const textArea = document.createElement('textarea');
+            textArea.value = command;
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                this.showNotification('✅ 启动命令已复制到剪贴板！', 'success');
+            } catch (execError) {
+                this.showNotification('❌ 复制失败，请手动复制命令', 'error');
+            }
+            
+            document.body.removeChild(textArea);
+        }
+    }
+
+    // 显示通知
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close" type="button">×</button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // 添加动画效果
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 10);
+        
+        // 绑定关闭事件
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            this.hideNotification(notification);
+        });
+        
+        // 自动关闭
+        setTimeout(() => {
+            this.hideNotification(notification);
+        }, 3000);
+    }
+
+    // 隐藏通知
+    hideNotification(notification) {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
+    }
+
+    // 延迟测试连接
+    testConnectionAfterDelay() {
+        this.showNotification('⏱️ 将在30秒后自动测试连接，请确保在此期间启动桥接服务器...', 'info');
+        
+        setTimeout(async () => {
+            try {
+                const connected = await this.settingsManager.mcpService.checkBridgeConnection();
+                if (connected) {
+                    this.updateBridgeStatus(true);
+                    this.updateMCPStatus();
+                    this.showNotification('✅ 桥接服务器连接成功！', 'success');
+                } else {
+                    this.showNotification('❌ 桥接服务器仍未连接，请检查服务器是否正常启动', 'error');
+                }
+            } catch (error) {
+                this.showNotification('❌ 连接测试失败: ' + error.message, 'error');
+            }
+        }, 30000);
+    }
+
+    // 防抖函数
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
     }
 }

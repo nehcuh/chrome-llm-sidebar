@@ -42,6 +42,12 @@ class MCPConfigManager {
                     "type": "streamable-http",
                     "url": "http://127.0.0.1:12306/mcp",
                     "description": "HTTP流式MCP服务器示例"
+                },
+                "sse-example": {
+                    "type": "sse",
+                    "url": "http://localhost:3000/sse",
+                    "reconnectInterval": 5000,
+                    "description": "SSE流式MCP服务器示例"
                 }
             }
         };
@@ -129,6 +135,25 @@ class MCPConfigManager {
                         "description": "自定义API服务器"
                     }
                 }
+            },
+            "SSE服务器配置": {
+                "mcpServers": {
+                    "web-search-sse": {
+                        "type": "sse",
+                        "url": "http://localhost:3000/sse",
+                        "reconnectInterval": 5000,
+                        "description": "SSE网络搜索服务"
+                    },
+                    "realtime-data-sse": {
+                        "type": "sse",
+                        "url": "http://localhost:4000/events",
+                        "headers": {
+                            "Authorization": "Bearer your-token"
+                        },
+                        "reconnectInterval": 3000,
+                        "description": "实时数据SSE服务"
+                    }
+                }
             }
         };
     }
@@ -178,8 +203,8 @@ class MCPConfigManager {
         // 检查服务器类型
         const serverType = config.type || 'process';
         
-        if (serverType === 'streamable-http') {
-            // HTTP类型服务器验证
+        if (serverType === 'streamable-http' || serverType === 'sse') {
+            // HTTP/SSE类型服务器验证
             if (!config.url || typeof config.url !== 'string') {
                 errors.push(`服务器 "${name}": 缺少或无效的 "url" 字段`);
             } else {
@@ -192,6 +217,13 @@ class MCPConfigManager {
             
             if (config.headers && typeof config.headers !== 'object') {
                 warnings.push(`服务器 "${name}": "headers" 应为对象`);
+            }
+            
+            // SSE特定验证
+            if (serverType === 'sse') {
+                if (config.reconnectInterval && (typeof config.reconnectInterval !== 'number' || config.reconnectInterval < 1000)) {
+                    warnings.push(`服务器 "${name}": "reconnectInterval" 应为大于1000的数字（毫秒）`);
+                }
             }
         } else {
             // 进程类型服务器验证（原有逻辑）
@@ -255,18 +287,33 @@ class MCPConfigManager {
         };
 
         for (const [name, server] of mcpService.mcpServers.entries()) {
-            if (server.type === 'streamable-http' && server.url) {
-                // HTTP类型服务器
-                config.mcpServers[name] = {
-                    type: server.type,
-                    url: server.url,
-                    description: server.description || ''
-                };
+                    if (server.type === 'streamable-http' && server.url) {
+                        // HTTP类型服务器
+                        config.mcpServers[name] = {
+                            type: server.type,
+                            url: server.url,
+                            description: server.description || ''
+                        };
 
-                if (server.headers && Object.keys(server.headers).length > 0) {
-                    config.mcpServers[name].headers = server.headers;
-                }
-            } else if (server.command && server.args) {
+                        if (server.headers && Object.keys(server.headers).length > 0) {
+                            config.mcpServers[name].headers = server.headers;
+                        }
+                    } else if (server.type === 'sse' && server.url) {
+                        // SSE类型服务器
+                        config.mcpServers[name] = {
+                            type: server.type,
+                            url: server.url,
+                            description: server.description || ''
+                        };
+
+                        if (server.headers && Object.keys(server.headers).length > 0) {
+                            config.mcpServers[name].headers = server.headers;
+                        }
+                        
+                        if (server.reconnectInterval) {
+                            config.mcpServers[name].reconnectInterval = server.reconnectInterval;
+                        }
+                    } else if (server.command && server.args) {
                 // 进程类型服务器
                 config.mcpServers[name] = {
                     command: server.command,
@@ -306,6 +353,11 @@ class MCPConfigManager {
                     server.type = 'streamable-http';
                     server.url = serverConfig.url;
                     server.headers = serverConfig.headers || {};
+                } else if (serverConfig.type === 'sse') {
+                    server.type = 'sse';
+                    server.url = serverConfig.url;
+                    server.headers = serverConfig.headers || {};
+                    server.reconnectInterval = serverConfig.reconnectInterval || 5000;
                 } else {
                     server.command = serverConfig.command;
                     server.args = serverConfig.args || [];
@@ -316,6 +368,9 @@ class MCPConfigManager {
                 importedServers.push(serverName);
             }
 
+            // 自动保存配置
+            mcpService.saveMCPConfig();
+            
             return {
                 success: true,
                 importedServers,
@@ -326,6 +381,100 @@ class MCPConfigManager {
             return {
                 success: false,
                 error: `导入配置失败: ${error.message}`
+            };
+        }
+    }
+
+    // 从验证过的配置导入服务器（自动同步版本）
+    importConfigAutoSync(validatedConfig, mcpService, uiController = null) {
+        try {
+            const { config } = validatedConfig;
+            const importedServers = [];
+
+            // 清除现有的导入服务器，避免重复
+            const serversToDelete = [];
+            for (const [name, server] of mcpService.mcpServers.entries()) {
+                if (server.imported) {
+                    serversToDelete.push(name);
+                }
+            }
+            
+            serversToDelete.forEach(name => {
+                mcpService.mcpServers.delete(name);
+            });
+
+            // 导入新配置
+            for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+                const server = {
+                    name: serverName,
+                    description: serverConfig.description || `${serverName} MCP服务器`,
+                    status: 'disconnected',
+                    imported: true // Mark as imported
+                };
+
+                if (serverConfig.type === 'streamable-http') {
+                    server.type = 'streamable-http';
+                    server.url = serverConfig.url;
+                    server.headers = serverConfig.headers || {};
+                } else if (serverConfig.type === 'sse') {
+                    server.type = 'sse';
+                    server.url = serverConfig.url;
+                    server.headers = serverConfig.headers || {};
+                    server.reconnectInterval = serverConfig.reconnectInterval || 5000;
+                } else {
+                    server.command = serverConfig.command;
+                    server.args = serverConfig.args || [];
+                    server.env = serverConfig.env || {};
+                }
+
+                mcpService.mcpServers.set(serverName, server);
+                importedServers.push(serverName);
+            }
+
+            // 自动保存配置
+            mcpService.saveMCPConfig();
+            
+            // 自动同步UI（如果提供了UI控制器）
+            if (uiController) {
+                setTimeout(() => {
+                    uiController.renderMCPServers();
+                    uiController.refreshMCPServiceList();
+                }, 100);
+            }
+            
+            return {
+                success: true,
+                importedServers,
+                message: `成功导入 ${importedServers.length} 个MCP服务器配置`
+            };
+
+        } catch (error) {
+            return {
+                success: false,
+                error: `导入配置失败: ${error.message}`
+            };
+        }
+    }
+
+    // 从文件导入配置
+    async importConfigFromFile(file, mcpService, uiController = null) {
+        try {
+            const text = await file.text();
+            const validationResult = this.validateConfig(text);
+            
+            if (!validationResult.valid) {
+                return {
+                    success: false,
+                    error: `配置验证失败: ${validationResult.errors.join(', ')}`
+                };
+            }
+            
+            return this.importConfigAutoSync(validationResult, mcpService, uiController);
+            
+        } catch (error) {
+            return {
+                success: false,
+                error: `文件读取失败: ${error.message}`
             };
         }
     }

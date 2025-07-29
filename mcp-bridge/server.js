@@ -12,6 +12,7 @@ const WebSocket = require('ws');
 const { EventEmitter } = require('events');
 const path = require('path');
 const fs = require('fs');
+const { default: EventSource } = require('eventsource');
 
 class MCPBridge extends EventEmitter {
     constructor() {
@@ -41,7 +42,7 @@ class MCPBridge extends EventEmitter {
         this.app.post('/api/mcp/servers/:name/connect', async (req, res) => {
             const { name } = req.params;
             try {
-                const { command, args, description, type, url, headers } = req.body;
+                const { command, args, description, type, url, headers, reconnectInterval, env } = req.body;
                 
                 const result = await this.connectMCPServer(name, { 
                     command, 
@@ -49,7 +50,9 @@ class MCPBridge extends EventEmitter {
                     description, 
                     type, 
                     url, 
-                    headers 
+                    headers,
+                    reconnectInterval,
+                    env
                 });
                 res.json(result);
             } catch (error) {
@@ -94,6 +97,7 @@ class MCPBridge extends EventEmitter {
     async connectMCPServer(name, config) {
         try {
             console.log(`[DEBUG] Attempting to connect to MCP server: ${name}`);
+            console.log(`[DEBUG] Server config:`, JSON.stringify(config, null, 2));
             
             const server = {
                 name,
@@ -104,13 +108,36 @@ class MCPBridge extends EventEmitter {
             };
 
             if (config.type === 'streamable-http') {
-                // (Omitted for brevity, no changes here)
+                console.log(`[DEBUG] Connecting to HTTP MCP server: ${name}`);
+                // HTTP类型服务器连接
+                server.type = 'streamable-http';
+                server.url = config.url;
+                server.headers = config.headers || {};
+                
+                await this.testHttpConnection(server);
+                await this.initializeHttpMCPServer(server);
+            } else if (config.type === 'sse') {
+                console.log(`[DEBUG] Connecting to SSE MCP server: ${name}`);
+                // SSE类型服务器连接
+                server.type = 'sse';
+                server.url = config.url;
+                server.headers = config.headers || {};
+                server.reconnectInterval = config.reconnectInterval || 5000;
+                
+                await this.connectSSEMCPServer(server);
             } else {
+                console.log(`[DEBUG] Connecting to process MCP server: ${name}`);
                 server.type = 'process';
                 const safeArgs = config.args || [];
                 
                 let command = config.command;
                 let args = [...safeArgs];
+                
+                // Validate command is provided for process servers
+                if (!command) {
+                    throw new Error(`Command is required for process-type MCP server '${name}'`);
+                }
+                
                 // Sanitize the environment for the child process to avoid interference.
                 const cleanEnv = {};
                 // Pass essential system variables.
@@ -387,11 +414,20 @@ class MCPBridge extends EventEmitter {
     async initializeMCPServer(server) {
         try {
             console.log(`Sending initialize request to ${server.name}...`);
+            
+            // Wait a bit for the process to fully start
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Check if process is still running
+            if (server.process.killed || server.process.exitCode !== null) {
+                throw new Error(`Process for ${server.name} has already exited`);
+            }
+            
             const initResult = await this.sendMCPRequest(server, 'initialize', {
                 protocolVersion: '2024-11-05',
                 capabilities: {},
                 clientInfo: {
-                    name: 'simple-ai-copilot',
+                    name: 'mcp-bridge-server',
                     version: '1.0.0'
                 }
             });
@@ -406,20 +442,237 @@ class MCPBridge extends EventEmitter {
 
         } catch (error) {
             console.error(`Failed to initialize MCP server ${server.name}:`, error);
+            // Mark server as failed but don't throw - let it remain in disconnected state
+            server.status = 'error';
+            server.tools = [];
             throw error;
         }
     }
 
+    // SSE MCP 服务器连接
+    async connectSSEMCPServer(server) {
+        try {
+            console.log(`[DEBUG] Connecting to SSE MCP server: ${server.name} at ${server.url}`);
+            
+            return new Promise((resolve, reject) => {
+                const eventSource = new EventSource(server.url, {
+                    headers: server.headers
+                });
+                
+                server.eventSource = eventSource;
+                server.responseCallbacks = new Map();
+                
+                eventSource.onopen = () => {
+                    console.log(`[DEBUG] SSE connection opened for ${server.name}`);
+                    // 初始化 SSE MCP 服务器
+                    this.initializeSSEMCPServer(server)
+                        .then(() => resolve())
+                        .catch(reject);
+                };
+                
+                eventSource.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        console.log(`[DEBUG] Received SSE message from ${server.name}:`, message);
+                        this.handleSSEMessage(server, message);
+                    } catch (error) {
+                        console.error(`[ERROR] Failed to parse SSE message from ${server.name}:`, event.data, error);
+                    }
+                };
+                
+                eventSource.onerror = (error) => {
+                    console.error(`[ERROR] SSE connection error for ${server.name}:`, error);
+                    server.status = 'disconnected';
+                    
+                    // 自动重连
+                    if (server.reconnectInterval && server.status !== 'disconnecting') {
+                        console.log(`[DEBUG] Scheduling reconnect for ${server.name} in ${server.reconnectInterval}ms`);
+                        server.reconnectTimer = setTimeout(() => {
+                            if (server.status === 'disconnected') {
+                                console.log(`[DEBUG] Attempting to reconnect ${server.name}`);
+                                this.connectSSEMCPServer(server).catch(console.error);
+                            }
+                        }, server.reconnectInterval);
+                    }
+                };
+                
+                // 超时处理
+                const timeout = setTimeout(() => {
+                    eventSource.close();
+                    reject(new Error(`SSE connection timeout for ${server.name}`));
+                }, 10000);
+                
+                eventSource.onopen = () => {
+                    clearTimeout(timeout);
+                    console.log(`[DEBUG] SSE connection opened for ${server.name}`);
+                    this.initializeSSEMCPServer(server)
+                        .then(() => resolve())
+                        .catch(reject);
+                };
+            });
+            
+        } catch (error) {
+            console.error(`Failed to connect to SSE MCP server ${server.name}:`, error);
+            throw error;
+        }
+    }
+    
+    // 初始化 SSE MCP 服务器
+    async initializeSSEMCPServer(server) {
+        try {
+            console.log(`[DEBUG] Initializing SSE MCP server: ${server.name}`);
+            
+            // 发送初始化请求
+            const initResult = await this.sendSSEMCPRequest(server, 'initialize', {
+                protocolVersion: '2024-11-05',
+                capabilities: {},
+                clientInfo: {
+                    name: 'simple-ai-copilot',
+                    version: '1.0.0'
+                }
+            });
+            
+            console.log(`SSE MCP server ${server.name} initialized:`, initResult);
+            
+            // 获取工具列表
+            const toolsResult = await this.sendSSEMCPRequest(server, 'tools/list');
+            server.tools = toolsResult.tools || [];
+            
+            console.log(`SSE MCP server ${server.name} tools:`, server.tools.map(t => t.name));
+            
+        } catch (error) {
+            console.error(`Failed to initialize SSE MCP server ${server.name}:`, error);
+            throw error;
+        }
+    }
+    
+    // 处理 SSE 消息
+    handleSSEMessage(server, message) {
+        console.log(`[DEBUG] Handling SSE message from ${server.name}:`, message);
+        
+        if (message.id && server.responseCallbacks.has(message.id)) {
+            // 这是对请求的响应
+            const { resolve, reject } = server.responseCallbacks.get(message.id);
+            server.responseCallbacks.delete(message.id);
+            
+            if (message.error) {
+                console.error(`SSE MCP error from ${server.name}:`, message.error);
+                reject(new Error(message.error.message || JSON.stringify(message.error)));
+            } else {
+                console.log(`SSE MCP success from ${server.name}:`, message.result);
+                resolve(message.result);
+            }
+        } else if (message.method) {
+            // 这是服务器发送的通知或请求
+            console.log(`SSE MCP notification from ${server.name}:`, message.method, message.params);
+        } else {
+            console.warn(`Unhandled SSE message from ${server.name}:`, message);
+        }
+    }
+    
+    // 发送 SSE MCP 请求
+    async sendSSEMCPRequest(server, method, params = {}) {
+        return new Promise((resolve, reject) => {
+            if (!server.eventSource || server.eventSource.readyState !== EventSource.OPEN) {
+                reject(new Error(`SSE connection to ${server.name} is not open`));
+                return;
+            }
+            
+            const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            const request = {
+                jsonrpc: '2.0',
+                id,
+                method,
+                params
+            };
+            
+            console.log(`[DEBUG] Sending SSE MCP request to ${server.name}:`, request);
+            
+            // 存储回调
+            server.responseCallbacks.set(id, { resolve, reject });
+            
+            // 设置超时
+            const timeout = setTimeout(() => {
+                if (server.responseCallbacks.has(id)) {
+                    server.responseCallbacks.delete(id);
+                    reject(new Error(`SSE request timeout for method ${method} on server ${server.name}`));
+                }
+            }, 15000); // SSE 请求可能需要更长时间
+            
+            // 清理超时
+            const originalResolve = resolve;
+            const originalReject = reject;
+            
+            server.responseCallbacks.set(id, {
+                resolve: (result) => {
+                    clearTimeout(timeout);
+                    originalResolve(result);
+                },
+                reject: (error) => {
+                    clearTimeout(timeout);
+                    originalReject(error);
+                }
+            });
+            
+            try {
+                // 通过 HTTP POST 发送请求到 SSE 服务器的控制端点
+                // 大多数 SSE MCP 服务器会有一个单独的 POST 端点来接收请求
+                const controlUrl = server.url.replace('/sse', '/request').replace('/events', '/request');
+                
+                fetch(controlUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...server.headers
+                    },
+                    body: JSON.stringify(request)
+                }).catch(error => {
+                    server.responseCallbacks.delete(id);
+                    clearTimeout(timeout);
+                    reject(new Error(`Failed to send SSE request to ${server.name}: ${error.message}`));
+                });
+                
+            } catch (error) {
+                server.responseCallbacks.delete(id);
+                clearTimeout(timeout);
+                reject(new Error(`Failed to send SSE request to ${server.name}: ${error.message}`));
+            }
+        });
+    }
+
     async callTool(serverName, toolName, parameters) {
         const server = this.mcpServers.get(serverName);
-        if (!server || server.status !== 'connected') {
-            throw new Error(`MCP server ${serverName} not connected`);
+        if (!server) {
+            throw new Error(`MCP server ${serverName} not found`);
+        }
+        
+        // Check if process-type server is actually still running
+        if (server.type === 'process' && server.process) {
+            if (server.process.killed || server.process.exitCode !== null) {
+                console.log(`[DEBUG] Process for ${serverName} has exited, updating status`);
+                server.status = 'disconnected';
+                throw new Error(`MCP server ${serverName} process has exited`);
+            }
+        }
+        
+        if (server.status !== 'connected') {
+            throw new Error(`MCP server ${serverName} not connected (status: ${server.status})`);
         }
 
         try {
             if (server.type === 'streamable-http') {
                 // HTTP类型工具调用
                 const result = await this.sendHttpMCPRequest(server, 'tools/call', {
+                    name: toolName,
+                    arguments: parameters
+                });
+                return {
+                    success: true,
+                    result: result.content || result
+                };
+            } else if (server.type === 'sse') {
+                // SSE类型工具调用
+                const result = await this.sendSSEMCPRequest(server, 'tools/call', {
                     name: toolName,
                     arguments: parameters
                 });
@@ -439,6 +692,11 @@ class MCPBridge extends EventEmitter {
                 };
             }
         } catch (error) {
+            // If it's a process error, update server status
+            if (server.type === 'process' && server.process && 
+                (server.process.killed || server.process.exitCode !== null)) {
+                server.status = 'disconnected';
+            }
             throw new Error(`Tool call failed: ${error.message}`);
         }
     }
@@ -448,7 +706,14 @@ class MCPBridge extends EventEmitter {
         if (!server) return;
 
         try {
-            if (server.process && !server.process.killed) {
+            if (server.type === 'sse' && server.eventSource) {
+                // 关闭SSE连接
+                server.eventSource.close();
+                if (server.reconnectTimer) {
+                    clearTimeout(server.reconnectTimer);
+                }
+            } else if (server.process && !server.process.killed) {
+                // 关闭进程类型服务器
                 server.process.kill();
             }
             this.mcpServers.delete(name);

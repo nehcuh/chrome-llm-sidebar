@@ -2,7 +2,6 @@ class ChatService {
     constructor(mcpService) {
         this.messages = [];
         this.config = {}; // This will be initialized by the main app
-        this.searchService = new SearchService();
         this.mcpService = mcpService; // Use the provided instance
     }
 
@@ -49,7 +48,7 @@ class ChatService {
         await this.saveHistory();
     }
 
-    async sendMessage(messageText, webSearchEnabled, mcpToolsEnabled, getSelectedMCPServices) {
+    async sendMessage(messageText, mcpToolsEnabled, useFunctionCalling, getSelectedMCPServices) {
         const userMessage = this.addMessage('user', messageText);
         
         // Immediately render user message
@@ -61,29 +60,37 @@ class ChatService {
         try {
             let finalMessage = messageText;
             let toolsUsed = [];
+            let responseText = '';
 
-            if (webSearchEnabled) {
-                finalMessage = await this.enhanceMessageWithWebSearch(messageText);
-            }
-
-            if (mcpToolsEnabled) {
-                const selectedServices = await getSelectedMCPServices();
-                if (selectedServices.length > 0) {
-                    const { message: enhancedMessage, toolsUsed: mcpToolsUsed } = await this.mcpService.enhanceMessageWithTools(finalMessage);
-                    if (mcpToolsUsed.length > 0) {
-                        finalMessage = enhancedMessage;
-                        toolsUsed = mcpToolsUsed;
+            // Determine if we should use Function Calling or the old MCP enhancement method
+            const shouldUseFunctionCalling = mcpToolsEnabled && useFunctionCalling && this.mcpService.bridgeConnected;
+            
+            if (shouldUseFunctionCalling) {
+                console.log('[CHAT-DEBUG] Using OpenAI Function Calling with MCP tools');
+                const apiResponse = await this.callOpenAIAPI(finalMessage, true);
+                responseText = await this.processOpenAIResponse(apiResponse, finalMessage);
+            } else {
+                // Fallback to the old method
+                if (mcpToolsEnabled) {
+                    const selectedServices = await getSelectedMCPServices();
+                    if (selectedServices.length > 0) {
+                        const { message: enhancedMessage, toolsUsed: mcpToolsUsed } = await this.mcpService.enhanceMessageWithTools(finalMessage);
+                        if (mcpToolsUsed.length > 0) {
+                            finalMessage = enhancedMessage;
+                            toolsUsed = mcpToolsUsed;
+                        }
                     }
                 }
+                
+                const messageForLLM = this.formatMessageForLLM(finalMessage, toolsUsed);
+                const apiResponse = await this.callOpenAIAPI(messageForLLM, false);
+                responseText = apiResponse.choices[0].message.content;
             }
-
-            const messageForLLM = this.formatMessageForLLM(messageText, toolsUsed);
-            const response = await this.callOpenAIAPI(messageForLLM);
             
             this.removeMessage(loadingMessage.id);
             window.uiController.removeMessage(loadingMessage.id);
 
-            const assistantMessage = this.addMessage('assistant', response);
+            const assistantMessage = this.addMessage('assistant', responseText);
             window.uiController.renderMessage(assistantMessage);
 
         } catch (error) {
@@ -98,24 +105,35 @@ class ChatService {
         }
     }
 
-    async callOpenAIAPI(message) {
+    async callOpenAIAPI(message, enableFunctionCalling = false) {
+        const requestBody = {
+            model: this.config.model,
+            messages: [
+                ...this.messages.filter(m => m.role !== 'loading').map(m => ({
+                    role: m.role === 'user' ? 'user' : 'assistant',
+                    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+                })),
+                { role: 'user', content: typeof message === 'string' ? message : JSON.stringify(message) }
+            ],
+            temperature: parseFloat(this.config.temperature),
+        };
+
+        if (enableFunctionCalling && this.mcpService.bridgeConnected) {
+            const availableTools = this.mcpService.getAvailableTools();
+            if (availableTools.length > 0) {
+                console.log('[CHAT-DEBUG] Adding function calling with tools:', availableTools.map(t => t.name));
+                requestBody.tools = this.convertMCPToolsToOpenAIFormat(availableTools);
+                requestBody.tool_choice = 'auto';
+            }
+        }
+
         const response = await fetch(`${this.config.apiUrl}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${this.config.apiKey}`
             },
-            body: JSON.stringify({
-                model: this.config.model,
-                messages: [
-                    ...this.messages.filter(m => m.role !== 'loading').map(m => ({
-                        role: m.role === 'user' ? 'user' : 'assistant',
-                        content: m.content
-                    })),
-                    { role: 'user', content: message }
-                ],
-                temperature: parseFloat(this.config.temperature),
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -125,16 +143,7 @@ class ChatService {
         }
 
         const data = await response.json();
-        return data.choices[0].message.content;
-    }
-    
-    async enhanceMessageWithWebSearch(message) {
-        if (this.searchService.shouldPerformSearch(message)) {
-            const searchQuery = this.searchService.extractSearchQuery(message);
-            const searchResults = await this.searchService.search(searchQuery);
-            return `${message}\n\n以下是相关的搜索信息：\n${searchResults}\n\n请基于上述信息回答我的问题。`;
-        }
-        return message;
+        return data;
     }
 
     formatMessageForLLM(originalMessage, toolResults) {
@@ -147,5 +156,98 @@ class ChatService {
             formattedMessage += `\nTool Call ${index + 1}: ${tool.name}\nResult: ${JSON.stringify(tool.result, null, 2)}\n`;
         });
         return formattedMessage;
+    }
+
+    // Convert MCP tools to OpenAI function format
+    convertMCPToolsToOpenAIFormat(mcpTools) {
+        return mcpTools.map(tool => ({
+            type: 'function',
+            function: {
+                name: tool.name,
+                description: tool.description || `MCP tool: ${tool.name}`,
+                parameters: tool.inputSchema || {
+                    type: 'object',
+                    properties: {},
+                    required: []
+                }
+            }
+        }));
+    }
+
+    // Process OpenAI API response with possible function calls
+    async processOpenAIResponse(data, originalMessage) {
+        const message = data.choices[0].message;
+        
+        // If no tool calls, return the response directly
+        if (!message.tool_calls || message.tool_calls.length === 0) {
+            return message.content;
+        }
+
+        console.log('[CHAT-DEBUG] Processing tool calls:', message.tool_calls.map(tc => tc.function.name));
+        
+        // Execute all tool calls
+        const toolResults = [];
+        for (const toolCall of message.tool_calls) {
+            try {
+                const functionName = toolCall.function.name;
+                const functionArgs = JSON.parse(toolCall.function.arguments);
+                
+                console.log(`[CHAT-DEBUG] Calling tool: ${functionName} with args:`, functionArgs);
+                
+                const result = await this.mcpService.callTool(functionName, functionArgs);
+                
+                toolResults.push({
+                    tool_call_id: toolCall.id,
+                    role: 'tool',
+                    name: functionName,
+                    content: JSON.stringify(result)
+                });
+                
+                console.log(`[CHAT-DEBUG] Tool ${functionName} result:`, result);
+                
+            } catch (error) {
+                console.error(`[CHAT-ERROR] Tool call failed for ${toolCall.function.name}:`, error);
+                toolResults.push({
+                    tool_call_id: toolCall.id,
+                    role: 'tool', 
+                    name: toolCall.function.name,
+                    content: JSON.stringify({ error: error.message })
+                });
+            }
+        }
+        
+        // Make a second API call with the tool results
+        const followUpMessages = [
+            ...this.messages.filter(m => m.role !== 'loading').map(m => ({
+                role: m.role === 'user' ? 'user' : 'assistant',
+                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+            })),
+            { role: 'user', content: typeof originalMessage === 'string' ? originalMessage : JSON.stringify(originalMessage) },
+            message, // The assistant message with tool calls
+            ...toolResults // The tool results
+        ];
+        
+        console.log('[CHAT-DEBUG] Making follow-up API call with tool results');
+        
+        const followUpResponse = await fetch(`${this.config.apiUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.config.apiKey}`
+            },
+            body: JSON.stringify({
+                model: this.config.model,
+                messages: followUpMessages,
+                temperature: parseFloat(this.config.temperature)
+            })
+        });
+        
+        if (!followUpResponse.ok) {
+            const errorData = await followUpResponse.json().catch(() => ({}));
+            throw new Error(errorData?.error?.message || `Follow-up API request failed with status ${followUpResponse.status}`);
+        }
+        
+        const followUpData = await followUpResponse.json();
+        return followUpData.choices[0].message.content;
     }
 }
