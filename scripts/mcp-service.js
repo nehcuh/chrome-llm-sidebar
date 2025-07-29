@@ -33,6 +33,11 @@ class MCPService {
         
         try {
             await this.loadMCPConfig();
+            
+            // 启动自动重连机制
+            this.startAutoReconnect();
+            
+            // 首次检查桥接连接
             await this.checkBridgeConnection();
             
             // 记录初始化前的服务器数量（可能包含JSON导入的服务器）
@@ -245,7 +250,8 @@ class MCPService {
         }
         
         serverEntries.forEach(([serverName, serverConfig]) => {
-            console.log('[MCP-DEBUG] 加载保存的服务器:', serverName, serverConfig);
+            console.log('[MCP-DEBUG] 加载保存的服务器:', serverName, 'config:', JSON.stringify(serverConfig, null, 2));
+            console.log('[MCP-DEBUG] 服务器配置类型:', serverConfig.type);
             
             const server = {
                 name: serverName,
@@ -256,16 +262,26 @@ class MCPService {
 
             // 根据类型设置不同的配置
             if (serverConfig.type === 'streamable-http') {
+                console.log('[MCP-DEBUG] 设置为HTTP类型服务器:', serverName);
                 server.type = 'streamable-http';
                 server.url = serverConfig.url;
                 server.headers = serverConfig.headers || {};
+            } else if (serverConfig.type === 'sse') {
+                console.log('[MCP-DEBUG] 设置为SSE类型服务器:', serverName);
+                server.type = 'sse';
+                server.url = serverConfig.url;
+                server.headers = serverConfig.headers || {};
+                server.reconnectInterval = serverConfig.reconnectInterval || 5000;
             } else {
                 // 默认为进程类型
+                console.log('[MCP-DEBUG] 设置为进程类型服务器 (默认):', serverName, 'type 字段值:', serverConfig.type);
+                server.type = 'process';
                 server.command = serverConfig.command;
                 server.args = serverConfig.args || [];
                 server.env = serverConfig.env || {};
             }
 
+            console.log('[MCP-DEBUG] 最终服务器对象:', JSON.stringify(server, null, 2));
             this.mcpServers.set(serverName, server);
             console.log('[MCP-DEBUG] 成功加载保存的服务器:', serverName);
         });
@@ -506,7 +522,9 @@ class MCPService {
                 description: server.description,
                 type: server.type,
                 url: server.url,
-                headers: server.headers
+                headers: server.headers,
+                reconnectInterval: server.reconnectInterval,
+                env: server.env
             };
 
             console.log('[MCP-DEBUG] 发送连接请求到桥接服务器...');
@@ -1162,13 +1180,39 @@ class MCPService {
         }
     }
 
+    // 启动自动重连机制
+    startAutoReconnect() {
+        if (this.autoReconnectTimer) {
+            clearInterval(this.autoReconnectTimer);
+        }
+        
+        this.autoReconnectTimer = setInterval(async () => {
+            if (!this.bridgeConnected) {
+                console.log('[MCP-DEBUG] 自动重连机制触发，尝试重新连接桥接服务器...');
+                await this.checkBridgeConnection();
+            }
+        }, 10000); // 每10秒检查一次
+        
+        console.log('[MCP-DEBUG] 自动重连机制已启动');
+    }
+
+    // 停止自动重连机制
+    stopAutoReconnect() {
+        if (this.autoReconnectTimer) {
+            clearInterval(this.autoReconnectTimer);
+            this.autoReconnectTimer = null;
+            console.log('[MCP-DEBUG] 自动重连机制已停止');
+        }
+    }
+
     // 获取桥接服务器状态
     getBridgeStatus() {
         const status = {
             connected: this.bridgeConnected,
             url: this.bridgeUrl,
             servers: this.mcpServers.size,
-            tools: this.availableTools.size
+            tools: this.availableTools.size,
+            autoReconnect: this.autoReconnectTimer !== null
         };
         console.log('[MCP-DEBUG] 获取桥接状态:', status);
         return status;
