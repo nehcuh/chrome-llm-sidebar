@@ -1,11 +1,18 @@
 class UIController {
-    constructor(chatService, settingsManager) {
+    constructor(chatService, settingsManager, sessionManager = null, promptManager = null) {
         this.chatService = chatService;
         this.settingsManager = settingsManager;
+        this.sessionManager = sessionManager;
+        this.promptManager = promptManager;
+        this.richMediaRenderer = null;
         this.init();
     }
 
     async init() {
+        // 初始化富媒体渲染器
+        this.richMediaRenderer = new RichMediaRenderer();
+        await this.richMediaRenderer.init();
+        
         this.setupEventListeners();
         this.updateSettingsUI();
         this.renderMessages();
@@ -160,10 +167,14 @@ class UIController {
         sendBtn.disabled = !hasText || !hasConfig;
     }
 
-    renderMessages() {
+    async renderMessages() {
         const chatMessages = document.getElementById('chatMessages');
         chatMessages.innerHTML = '';
-        this.chatService.messages.forEach(message => this.renderMessage(message));
+        
+        // 并行渲染所有消息
+        const renderPromises = this.chatService.messages.map(message => this.renderMessage(message));
+        await Promise.all(renderPromises);
+        
         this.scrollToBottom();
     }
 
@@ -173,7 +184,7 @@ class UIController {
         this.scrollToBottom();
     }
 
-    renderMessage(message) {
+    async renderMessage(message) {
         const chatMessages = document.getElementById('chatMessages');
         const messageElement = document.createElement('div');
         messageElement.className = `message ${message.role}`;
@@ -181,17 +192,35 @@ class UIController {
 
         let content = message.content;
         
-        // Ensure content is a string
-        if (typeof content !== 'string') {
-            content = JSON.stringify(content, null, 2);
+        // 使用富媒体渲染器渲染内容
+        if (this.richMediaRenderer) {
+            try {
+                content = await this.richMediaRenderer.renderMessage(content, {
+                    enableMarkdown: true,
+                    enableHtml: true,
+                    enableMermaid: true,
+                    enableKaTeX: true,
+                    enableCopy: true
+                });
+            } catch (error) {
+                console.error('Rich media rendering failed:', error);
+                // 降级到基本HTML转义
+                content = this.escapeHtml(content);
+            }
+        } else {
+            // 降级到基本渲染
+            content = this.escapeHtml(content);
+            content = content.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
         }
-        
-        const escapeHtml = (unsafe) => unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        content = escapeHtml(content);
-        content = content.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
 
         messageElement.innerHTML = content;
         chatMessages.appendChild(messageElement);
+        
+        // 设置复制按钮事件
+        if (this.richMediaRenderer) {
+            this.richMediaRenderer.setupCopyButtons(messageElement);
+        }
+        
         this.scrollToBottom();
     }
     
@@ -917,5 +946,20 @@ class UIController {
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
         };
+    }
+
+    /**
+     * HTML转义
+     */
+    escapeHtml(unsafe) {
+        if (typeof unsafe !== 'string') {
+            unsafe = String(unsafe);
+        }
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 }
