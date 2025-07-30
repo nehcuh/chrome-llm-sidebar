@@ -50,12 +50,28 @@ class RichMediaRenderer {
         // 自定义代码块渲染
         renderer.code = (code, language) => {
             const validLang = language || 'text';
-            return `<pre class="code-block" data-language="${validLang}"><code class="language-${validLang}">${this.escapeHtml(code)}</code></pre>`;
+            const escapedCode = this.escapeHtml(code);
+            return `<div class="code-block-wrapper">
+                <div class="code-header">
+                    <span class="code-language">${validLang}</span>
+                    <button class="copy-button" data-code="${escapedCode.replace(/"/g, '&quot;')}" title="复制代码">
+                        📋 复制
+                    </button>
+                </div>
+                <pre class="code-block" data-language="${validLang}"><code class="language-${validLang}">${escapedCode}</code></pre>
+            </div>`;
         };
 
         // 自定义表格渲染
         renderer.table = (header, body) => {
-            return `<div class="table-container"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+            return `<div class="table-wrapper">
+                <div class="table-header">
+                    <button class="copy-button" data-table="${this.escapeHtml(header + body)}" title="复制表格">
+                        📋 复制表格
+                    </button>
+                </div>
+                <div class="table-container"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>
+            </div>`;
         };
 
         // 自定义链接渲染，添加安全检查
@@ -65,13 +81,16 @@ class RichMediaRenderer {
             return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
         };
 
+        // 设置marked选项
         marked.setOptions({
             renderer: renderer,
             highlight: this.highlightCode.bind(this),
             breaks: true,
             gfm: true,
             sanitize: false,
-            smartypants: true
+            smartypants: true,
+            pedantic: false,
+            silent: true
         });
     }
 
@@ -152,10 +171,8 @@ class RichMediaRenderer {
                 renderedContent = await this.renderMermaid(renderedContent);
             }
 
-            // 4. 添加复制功能
-            if (enableCopy) {
-                renderedContent = this.addCopyButtons(renderedContent);
-            }
+            // 4. 复制功能现在在marked渲染器中处理
+            // 这里不需要额外处理
 
             return renderedContent;
         } catch (error) {
@@ -289,43 +306,7 @@ class RichMediaRenderer {
         }
     }
 
-    /**
-     * 添加复制按钮
-     */
-    addCopyButtons(content) {
-        // 为代码块添加复制按钮
-        content = content.replace(/<pre class="code-block" data-language="([^"]*)"><code class="language-\1">([\s\S]*?)<\/code><\/pre>/g, 
-            (match, language, code) => {
-                const buttonId = `copy-btn-${Date.now()}-${Math.random()}`;
-                this.copyButtons.set(buttonId, code);
-                return `<div class="code-block-wrapper">
-                    <div class="code-header">
-                        <span class="code-language">${language}</span>
-                        <button class="copy-button" data-copy-id="${buttonId}" title="复制代码">
-                            📋 复制
-                        </button>
-                    </div>
-                    <pre class="code-block" data-language="${language}"><code class="language-${language}">${code}</code></pre>
-                </div>`;
-            });
-
-        // 为表格添加复制按钮
-        content = content.replace(/<div class="table-container">(<table>[\s\S]*?<\/table>)<\/div>/g,
-            (match, table) => {
-                const buttonId = `copy-btn-${Date.now()}-${Math.random()}`;
-                this.copyButtons.set(buttonId, this.extractTableContent(table));
-                return `<div class="table-wrapper">
-                    <div class="table-header">
-                        <button class="copy-button" data-copy-id="${buttonId}" title="复制表格">
-                            📋 复制表格
-                        </button>
-                    </div>
-                    <div class="table-container">${table}</div>
-                </div>`;
-            });
-
-        return content;
-    }
+    // 复制按钮功能现在集成在marked渲染器中
 
     /**
      * 提取表格内容为Markdown格式
@@ -383,12 +364,26 @@ class RichMediaRenderer {
      * 处理复制点击
      */
     async handleCopyClick(button) {
-        const copyId = button.getAttribute('data-copy-id');
-        const content = this.copyButtons.get(copyId);
+        let content = '';
+        
+        // 获取要复制的内容
+        if (button.hasAttribute('data-code')) {
+            content = button.getAttribute('data-code');
+        } else if (button.hasAttribute('data-table')) {
+            content = button.getAttribute('data-table');
+        } else if (button.hasAttribute('data-copy-id')) {
+            const copyId = button.getAttribute('data-copy-id');
+            content = this.copyButtons.get(copyId);
+        }
         
         if (!content) return;
 
         try {
+            // 如果是表格内容，需要从HTML转换为Markdown格式
+            if (button.hasAttribute('data-table')) {
+                content = this.extractTableContent(button.closest('.table-wrapper').querySelector('table').outerHTML);
+            }
+
             await navigator.clipboard.writeText(content);
             
             // 更新按钮状态

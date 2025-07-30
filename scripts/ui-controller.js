@@ -190,6 +190,51 @@ class UIController {
         messageElement.className = `message ${message.role}`;
         messageElement.setAttribute('data-message-id', message.id);
 
+        // 创建消息头部
+        const messageHeader = document.createElement('div');
+        messageHeader.className = 'message-header';
+        
+        // 创建消息角色标签
+        const roleLabel = document.createElement('span');
+        roleLabel.className = 'message-role';
+        roleLabel.textContent = message.role === 'user' ? '用户' : '助手';
+        messageHeader.appendChild(roleLabel);
+        
+        // 创建消息操作按钮
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'message-actions';
+        
+        // 编辑按钮
+        const editBtn = document.createElement('button');
+        editBtn.className = 'message-action-btn edit-btn';
+        editBtn.innerHTML = '✏️';
+        editBtn.title = '编辑消息';
+        editBtn.addEventListener('click', () => this.editMessage(message.id, message.content, message.role));
+        actionsDiv.appendChild(editBtn);
+        
+        // 复制按钮
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'message-action-btn copy-btn';
+        copyBtn.innerHTML = '📋';
+        copyBtn.title = '复制消息';
+        copyBtn.addEventListener('click', () => this.copyMessage(message.content));
+        actionsDiv.appendChild(copyBtn);
+        
+        // 基于此消息重新对话按钮
+        const newChatBtn = document.createElement('button');
+        newChatBtn.className = 'message-action-btn new-chat-btn';
+        newChatBtn.innerHTML = '🔄';
+        newChatBtn.title = '基于此消息重新对话';
+        newChatBtn.addEventListener('click', () => this.startNewChatFromMessage(message.id, message.content, message.role));
+        actionsDiv.appendChild(newChatBtn);
+        
+        messageHeader.appendChild(actionsDiv);
+        messageElement.appendChild(messageHeader);
+        
+        // 创建消息内容区域
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        
         let content = message.content;
         
         // 使用富媒体渲染器渲染内容
@@ -213,12 +258,14 @@ class UIController {
             content = content.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
         }
 
-        messageElement.innerHTML = content;
+        messageContent.innerHTML = content;
+        messageElement.appendChild(messageContent);
+        
         chatMessages.appendChild(messageElement);
         
         // 设置复制按钮事件
         if (this.richMediaRenderer) {
-            this.richMediaRenderer.setupCopyButtons(messageElement);
+            this.richMediaRenderer.setupCopyButtons(messageContent);
         }
         
         this.scrollToBottom();
@@ -946,6 +993,210 @@ class UIController {
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
         };
+    }
+
+    /**
+     * 编辑消息
+     */
+    editMessage(messageId, content, role) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (!messageElement) return;
+
+        const messageContent = messageElement.querySelector('.message-content');
+        if (!messageContent) return;
+
+        // 创建编辑模式
+        const editDiv = document.createElement('div');
+        editDiv.className = 'message-edit-mode';
+        
+        const textarea = document.createElement('textarea');
+        textarea.className = 'message-edit-textarea';
+        textarea.value = content;
+        textarea.rows = Math.max(3, Math.min(10, content.split('\n').length));
+        
+        const buttonDiv = document.createElement('div');
+        buttonDiv.className = 'message-edit-buttons';
+        
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'message-edit-btn save-btn';
+        saveBtn.innerHTML = '💾 保存';
+        saveBtn.addEventListener('click', () => this.saveEditedMessage(messageId, textarea.value, role));
+        
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'message-edit-btn cancel-btn';
+        cancelBtn.innerHTML = '❌ 取消';
+        cancelBtn.addEventListener('click', () => this.cancelEditMessage(messageId));
+        
+        buttonDiv.appendChild(saveBtn);
+        buttonDiv.appendChild(cancelBtn);
+        
+        editDiv.appendChild(textarea);
+        editDiv.appendChild(buttonDiv);
+        
+        // 隐藏原始内容，显示编辑界面
+        messageContent.style.display = 'none';
+        messageElement.appendChild(editDiv);
+        
+        // 聚焦到文本框
+        textarea.focus();
+        textarea.select();
+    }
+
+    /**
+     * 保存编辑的消息
+     */
+    async saveEditedMessage(messageId, newContent, role) {
+        try {
+            // 更新消息内容
+            const message = this.chatService.messages.find(m => m.id === messageId);
+            if (message) {
+                message.content = newContent;
+                
+                // 重新渲染消息
+                const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+                if (messageElement) {
+                    // 移除编辑模式
+                    const editMode = messageElement.querySelector('.message-edit-mode');
+                    if (editMode) {
+                        editMode.remove();
+                    }
+                    
+                    // 显示内容区域
+                    const messageContent = messageElement.querySelector('.message-content');
+                    if (messageContent) {
+                        messageContent.style.display = 'block';
+                        
+                        // 重新渲染内容
+                        let content = newContent;
+                        if (this.richMediaRenderer) {
+                            try {
+                                content = await this.richMediaRenderer.renderMessage(content, {
+                                    enableMarkdown: true,
+                                    enableHtml: true,
+                                    enableMermaid: true,
+                                    enableKaTeX: true,
+                                    enableCopy: true
+                                });
+                            } catch (error) {
+                                console.error('Rich media rendering failed:', error);
+                                content = this.escapeHtml(newContent);
+                            }
+                        } else {
+                            content = this.escapeHtml(newContent);
+                        }
+                        
+                        messageContent.innerHTML = content;
+                        
+                        // 重新设置复制按钮事件
+                        if (this.richMediaRenderer) {
+                            this.richMediaRenderer.setupCopyButtons(messageContent);
+                        }
+                    }
+                }
+                
+                // 显示成功消息
+                this.showNotification('✅ 消息已更新', 'success');
+            }
+        } catch (error) {
+            console.error('Failed to save edited message:', error);
+            this.showNotification('❌ 保存失败', 'error');
+        }
+    }
+
+    /**
+     * 取消编辑消息
+     */
+    cancelEditMessage(messageId) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (!messageElement) return;
+
+        const editMode = messageElement.querySelector('.message-edit-mode');
+        if (editMode) {
+            editMode.remove();
+        }
+        
+        const messageContent = messageElement.querySelector('.message-content');
+        if (messageContent) {
+            messageContent.style.display = 'block';
+        }
+    }
+
+    /**
+     * 复制消息内容
+     */
+    async copyMessage(content) {
+        try {
+            await navigator.clipboard.writeText(content);
+            this.showNotification('✅ 消息已复制到剪贴板', 'success');
+        } catch (error) {
+            console.error('Failed to copy message:', error);
+            this.showNotification('❌ 复制失败', 'error');
+        }
+    }
+
+    /**
+     * 基于历史消息重新开启对话
+     */
+    startNewChatFromMessage(messageId, content, role) {
+        if (confirm('确定要基于此消息重新开启对话吗？这将清除当前对话内容。')) {
+            // 清除当前对话
+            this.chatService.clearMessages();
+            this.renderMessages();
+            
+            // 将历史消息作为新的用户输入
+            const messageInput = document.getElementById('messageInput');
+            messageInput.value = content;
+            this.handleInputChange();
+            
+            // 聚焦到输入框
+            messageInput.focus();
+            
+            this.showNotification('✅ 已基于历史消息创建新对话', 'success');
+        }
+    }
+
+    /**
+     * 显示通知
+     */
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close" type="button">×</button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // 添加动画效果
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 10);
+        
+        // 绑定关闭事件
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            this.hideNotification(notification);
+        });
+        
+        // 自动关闭
+        setTimeout(() => {
+            this.hideNotification(notification);
+        }, 3000);
+    }
+
+    /**
+     * 隐藏通知
+     */
+    hideNotification(notification) {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
     }
 
     /**

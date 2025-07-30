@@ -2271,9 +2271,207 @@ input:checked + .mcp-slider:before { transform: translateX(18px); }
     }
 }
 
+/* 消息头部样式 */
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--neutral-50);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--neutral-200);
+}
+
+.message-role {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--neutral-700);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.message.user .message-role {
+    color: var(--primary-600);
+}
+
+.message.assistant .message-role {
+    color: var(--success-600);
+}
+
+.message-actions {
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+.message-action-btn {
+    background: none;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    opacity: 0.6;
+}
+
+.message-action-btn:hover {
+    opacity: 1;
+    background: var(--neutral-200);
+    transform: scale(1.1);
+}
+
+.message-action-btn:active {
+    transform: scale(0.95);
+}
+
+/* 消息编辑模式样式 */
+.message-edit-mode {
+    margin: var(--spacing-md) 0;
+    padding: var(--spacing-md);
+    background: var(--neutral-50);
+    border: 2px solid var(--primary-300);
+    border-radius: var(--radius-md);
+    animation: slideIn 0.2s ease-out;
+}
+
+.message-edit-textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: var(--spacing-md);
+    border: 1px solid var(--neutral-300);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-normal);
+    resize: vertical;
+    margin-bottom: var(--spacing-md);
+    background: var(--background-color);
+    color: var(--text-color);
+}
+
+.message-edit-textarea:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.message-edit-buttons {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: flex-end;
+}
+
+.message-edit-btn {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.message-edit-btn.save-btn {
+    background: var(--success-500);
+    color: white;
+}
+
+.message-edit-btn.save-btn:hover {
+    background: var(--success-600);
+    transform: translateY(-1px);
+}
+
+.message-edit-btn.cancel-btn {
+    background: var(--neutral-500);
+    color: white;
+}
+
+.message-edit-btn.cancel-btn:hover {
+    background: var(--neutral-600);
+    transform: translateY(-1px);
+}
+
+.message-edit-btn:active {
+    transform: translateY(0);
+}
+
+/* 通知样式 */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 10000;
+    max-width: 300px;
+    font-family: var(--font-family);
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all var(--transition-normal);
+}
+
+.notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.notification-success {
+    background: var(--success-500);
+    color: white;
+}
+
+.notification-error {
+    background: var(--error-500);
+    color: white;
+}
+
+.notification-info {
+    background: var(--info-500);
+    color: white;
+}
+
+.notification-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.notification-message {
+    flex: 1;
+    font-weight: 500;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+.notification-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
 /* 动画效果 */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
@@ -2291,4 +2489,27 @@ input:checked + .mcp-slider:before { transform: translateX(18px); }
 .table-wrapper:hover,
 .mermaid-container:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+    .message-header {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        align-items: flex-start;
+    }
+    
+    .message-actions {
+        align-self: flex-end;
+    }
+    
+    .message-edit-buttons {
+        flex-direction: column;
+    }
+    
+    .notification {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
 }

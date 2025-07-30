@@ -9,7 +9,10 @@
       "Bash(git pull:*)",
       "Bash(git merge:*)",
       "Bash(git push:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(node:*)"
     ],
     "deny": []
   }
