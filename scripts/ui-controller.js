@@ -167,6 +167,12 @@ class UIController {
         this.scrollToBottom();
     }
 
+    clearMessages() {
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.innerHTML = '';
+        this.scrollToBottom();
+    }
+
     renderMessage(message) {
         const chatMessages = document.getElementById('chatMessages');
         const messageElement = document.createElement('div');
@@ -472,7 +478,7 @@ class UIController {
         previewPanel.innerHTML = `
             <div class="preview-header">
                 <span class="preview-title">🔄 配置预览</span>
-                <button class="preview-sync-btn" onclick="app.uiController.applyAutoSyncConfig()">
+                <button class="preview-sync-btn">
                     ⚡ 立即同步
                 </button>
             </div>
@@ -482,6 +488,10 @@ class UIController {
                 <p class="preview-hint">💡 保存后将自动同步到可视化界面</p>
             </div>
         `;
+
+        // 添加同步按钮事件监听器
+        const syncBtn = previewPanel.querySelector('.preview-sync-btn');
+        syncBtn.addEventListener('click', () => this.applyAutoSyncConfig());
 
         // 存储当前配置供同步使用
         this.pendingAutoSyncConfig = config;

@@ -11,12 +11,97 @@
         <div class="sidebar-header">
             <h3>AI Copilot</h3>
             <div class="header-actions">
+                <button id="sessionBtn" class="icon-btn" title="会话管理">
+                    <span>💬</span>
+                </button>
+                <button id="promptBtn" class="icon-btn" title="Prompt模板">
+                    <span>📝</span>
+                </button>
                 <button id="settingsBtn" class="icon-btn" title="设置">
                     <span>⚙️</span>
                 </button>
                 <button id="clearBtn" class="icon-btn" title="清除对话">
                     <span>🗑️</span>
                 </button>
+            </div>
+        </div>
+        
+        <!-- 会话管理面板 -->
+        <div id="sessionPanel" class="session-panel">
+            <div class="panel-header">
+                <h4>会话管理</h4>
+                <div class="panel-actions">
+                    <button id="newSessionBtn" class="action-btn" title="新建会话">
+                        <span>➕</span>
+                    </button>
+                    <button id="importSessionBtn" class="action-btn" title="导入会话">
+                        <span>📥</span>
+                    </button>
+                    <button id="closeSessionPanel" class="close-btn">×</button>
+                </div>
+            </div>
+            
+            <div class="session-search">
+                <input type="text" id="sessionSearch" placeholder="搜索会话..." class="search-input">
+                <button id="sessionFilterToggle" class="filter-toggle-btn" title="高级过滤">🔍</button>
+            </div>
+            
+            <!-- 高级过滤面板 -->
+            <div id="sessionFilterPanel" class="filter-panel hidden">
+                <div class="filter-group">
+                    <label class="filter-label">时间范围</label>
+                    <div class="date-range-filter">
+                        <input type="date" id="sessionStartDate" class="date-input" placeholder="开始日期">
+                        <span>至</span>
+                        <input type="date" id="sessionEndDate" class="date-input" placeholder="结束日期">
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <label class="filter-label">标签过滤</label>
+                    <div id="sessionTagFilter" class="tag-filter">
+                        <!-- 动态生成的标签选择器 -->
+                    </div>
+                </div>
+                
+                <div class="filter-actions">
+                    <button id="applySessionFilters" class="btn btn-primary btn-sm">应用过滤</button>
+                    <button id="clearSessionFilters" class="btn btn-secondary btn-sm">清除</button>
+                </div>
+            </div>
+            
+            <div class="session-list-container">
+                <div class="session-list" id="sessionList">
+                    <!-- 动态生成的会话列表 -->
+                </div>
+                <div id="sessionLoadingIndicator" class="loading-indicator hidden">
+                    <div class="loading-spinner"></div>
+                    <span>加载更多会话...</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Prompt模板面板 -->
+        <div id="promptPanel" class="prompt-panel">
+            <div class="panel-header">
+                <h4>Prompt模板</h4>
+                <div class="panel-actions">
+                    <button id="newPromptBtn" class="action-btn" title="新建模板">
+                        <span>➕</span>
+                    </button>
+                    <button id="closePromptPanel" class="close-btn">×</button>
+                </div>
+            </div>
+            
+            <div class="prompt-search">
+                <input type="text" id="promptSearch" placeholder="搜索模板..." class="search-input">
+                <select id="promptCategoryFilter" class="category-filter">
+                    <option value="">所有分类</option>
+                </select>
+            </div>
+            
+            <div class="prompt-list" id="promptList">
+                <!-- 动态生成的Prompt列表 -->
             </div>
         </div>
         
@@ -162,6 +247,12 @@
         </div>
     </div>
     
+    <script src="scripts/database-manager.js"></script>
+    <script src="scripts/data-migration-manager.js"></script>
+    <script src="scripts/session-manager.js"></script>
+    <script src="scripts/prompt-manager.js"></script>
+    <script src="scripts/ui-component-manager.js"></script>
+    <script src="scripts/dev-test-suite.js"></script>
     <script src="scripts/mcp-service.js"></script>
     <script src="scripts/mcp-config-manager.js"></script>
     <script src="scripts/chat-service.js"></script>

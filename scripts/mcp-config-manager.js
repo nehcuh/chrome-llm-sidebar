@@ -486,7 +486,7 @@ class MCPConfigManager {
                 <div class="config-example">
                     <h4>${name}</h4>
                     <pre><code>${JSON.stringify(config, null, 2)}</code></pre>
-                    <button class="help-btn" onclick="app.loadConfigExample('${name}')">使用此配置</button>
+                    <button class="help-btn load-example-btn" data-config-name="${name}">使用此配置</button>
                 </div>
             `;
         }).join('');
@@ -496,7 +496,7 @@ class MCPConfigManager {
                 <div class="config-template-content">
                     <div class="config-template-header">
                         <h3>MCP服务器配置模板</h3>
-                        <button class="template-close-btn" onclick="app.closeTemplateModal()">×</button>
+                        <button class="template-close-btn">×</button>
                     </div>
                     <div class="config-template-body">
                         <h4>基本格式说明</h4>
@@ -510,7 +510,7 @@ class MCPConfigManager {
 
                         <h4>默认模板</h4>
                         <pre><code>${JSON.stringify(this.defaultTemplate, null, 2)}</code></pre>
-                        <button class="help-btn" onclick="app.loadConfigTemplate()">使用默认模板</button>
+                        <button class="help-btn load-template-btn">使用默认模板</button>
 
                         <h4>配置示例</h4>
                         ${examples}

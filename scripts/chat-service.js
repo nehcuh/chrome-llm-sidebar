@@ -1,8 +1,10 @@
 class ChatService {
-    constructor(mcpService) {
+    constructor(mcpService, sessionManager = null) {
         this.messages = [];
         this.config = {}; // This will be initialized by the main app
         this.mcpService = mcpService; // Use the provided instance
+        this.sessionManager = sessionManager; // Session manager instance
+        this.currentSessionId = null;
     }
 
     async init(config) {
@@ -12,9 +14,19 @@ class ChatService {
 
     async loadHistory() {
         try {
-            const result = await chrome.storage.local.get(['chatHistory']);
-            if (result.chatHistory) {
-                this.messages = result.chatHistory;
+            if (this.sessionManager) {
+                // 使用SessionManager加载当前会话的消息
+                const currentSession = this.sessionManager.getCurrentSession();
+                if (currentSession) {
+                    this.messages = currentSession.messages || [];
+                    this.currentSessionId = currentSession.id;
+                }
+            } else {
+                // 向后兼容：从Chrome Storage加载
+                const result = await chrome.storage.local.get(['chatHistory']);
+                if (result.chatHistory) {
+                    this.messages = result.chatHistory;
+                }
             }
         } catch (error) {
             console.error('Failed to load chat history:', error);
@@ -23,11 +35,75 @@ class ChatService {
 
     async saveHistory() {
         try {
-            const historyToSave = this.messages.filter(m => m.role === 'user' || m.role === 'assistant');
-            await chrome.storage.local.set({ chatHistory: historyToSave });
+            if (this.sessionManager && this.currentSessionId) {
+                // 使用SessionManager保存消息到当前会话
+                const historyToSave = this.messages.filter(m => m.role === 'user' || m.role === 'assistant');
+                
+                // 清空当前会话的消息并重新添加
+                await this.sessionManager.clearMessages(this.currentSessionId);
+                for (const message of historyToSave) {
+                    await this.sessionManager.addMessage(this.currentSessionId, message.role, message.content);
+                }
+            } else {
+                // 向后兼容：保存到Chrome Storage
+                const historyToSave = this.messages.filter(m => m.role === 'user' || m.role === 'assistant');
+                await chrome.storage.local.set({ chatHistory: historyToSave });
+            }
         } catch (error) {
             console.error('Failed to save chat history:', error);
         }
+    }
+
+    /**
+     * 切换到指定会话
+     */
+    async switchToSession(sessionId) {
+        try {
+            if (!this.sessionManager) {
+                throw new Error('SessionManager not available');
+            }
+
+            const session = this.sessionManager.getSession(sessionId);
+            if (!session) {
+                throw new Error(`Session not found: ${sessionId}`);
+            }
+
+            // 保存当前消息到原会话
+            if (this.currentSessionId) {
+                await this.saveHistory();
+            }
+
+            // 切换到新会话
+            this.currentSessionId = sessionId;
+            this.messages = session.messages || [];
+            
+            // 触发消息重新渲染
+            if (window.uiController) {
+                window.uiController.clearMessages();
+                this.messages.forEach(message => {
+                    window.uiController.renderMessage(message);
+                });
+            }
+
+            console.log(`Switched to session: ${sessionId}`);
+        } catch (error) {
+            console.error('Failed to switch session:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 获取当前会话ID
+     */
+    getCurrentSessionId() {
+        return this.currentSessionId;
+    }
+
+    /**
+     * 设置SessionManager
+     */
+    setSessionManager(sessionManager) {
+        this.sessionManager = sessionManager;
     }
 
     addMessage(role, content) {
