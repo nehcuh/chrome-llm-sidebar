@@ -1,7 +1,7 @@
 {
   "name": "simple-ai-copilot",
   "version": "1.0.1",
-  "description": "A simple Chrome sidebar AI copilot with OpenAI-compatible API, web search, and MCP support",
+  "description": "A simple Chrome sidebar AI copilot with OpenAI-compatible API and intelligent page operations",
   "main": "background.js",
   "scripts": {
     "build": "echo 'No build step required for this vanilla JS project'",
@@ -14,8 +14,7 @@
     "copilot",
     "sidebar",
     "openai",
-    "mcp",
-    "web-search"
+    "web-automation"
   ],
   "author": "Your Name",
   "license": "MIT",
@@ -28,8 +27,6 @@
   },
   "homepage": "https://github.com/yourusername/simple-ai-copilot#readme",
   "dependencies": {
-    "@modelcontextprotocol/server-brave-search": "^0.6.2",
-    "@modelcontextprotocol/server-filesystem": "^2025.7.1",
     "node-fetch": "^2.7.0"
   },
   "engines": {

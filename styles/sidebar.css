@@ -744,6 +744,51 @@ body {
 input:checked + .mcp-slider { background-color: var(--primary-color); }
 input:checked + .mcp-slider:before { transform: translateX(18px); }
 
+/* Toggle setting styles */
+.toggle-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+
+.toggle-setting label {
+    margin: 0;
+    font-weight: 500;
+}
+
+/* Generic switch styles */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+}
+
+.switch input { display: none; }
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 22px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px; width: 16px;
+    left: 3px; bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider { background-color: var(--primary-color); }
+input:checked + .slider:before { transform: translateX(18px); }
+
 .mcp-config-tabs {
     display: flex;
     margin-bottom: 12px;
@@ -2511,5 +2556,92 @@ input:checked + .mcp-slider:before { transform: translateX(18px); }
         right: 10px;
         left: 10px;
         max-width: none;
+    }
+}
+
+/* JSON内容样式 */
+.json-block-wrapper {
+    background: var(--neutral-800);
+    border-radius: 8px;
+    margin: 12px 0;
+    overflow: hidden;
+    border: 1px solid var(--neutral-700);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: all var(--transition-fast);
+}
+
+.json-block-wrapper:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+}
+
+.json-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--neutral-900);
+    border-bottom: 1px solid var(--neutral-700);
+}
+
+.json-type {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary-400);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.json-block {
+    margin: 0;
+    padding: 16px;
+    background: var(--neutral-800);
+    overflow-x: auto;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--neutral-100);
+    border: none;
+    white-space: pre;
+    tab-size: 2;
+}
+
+.json-block code {
+    background: none;
+    color: var(--neutral-100);
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    border: none;
+    white-space: pre;
+}
+
+/* JSON语法高亮 */
+.json-block .string { color: #98c379; }
+.json-block .number { color: #d19a66; }
+.json-block .boolean { color: #56b6c2; }
+.json-block .null { color: #56b6c2; }
+.json-block .key { color: #e06c75; }
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+    .json-block-wrapper {
+        background: var(--neutral-800);
+        border-color: var(--neutral-700);
+    }
+    
+    .json-header {
+        background: var(--neutral-900);
+        border-color: var(--neutral-700);
+    }
+    
+    .json-block {
+        background: var(--neutral-800);
+        color: var(--neutral-100);
+    }
+    
+    .json-block code {
+        color: var(--neutral-100);
     }
 }

@@ -203,19 +203,28 @@
                 </div>
                 
                 <div class="setting-group">
-                    <h5>MCP 桥接服务器</h5>
-                    <div class="mcp-bridge-status" id="mcpBridgeStatus">
-                        <span class="status-indicator" id="bridgeStatusIndicator"></span>
-                        <span id="bridgeStatusText">检查中...</span>
+                    <h5>高级功能</h5>
+                    <div class="toggle-setting">
+                        <label for="mcpEnabled">启用MCP支持:</label>
+                        <label class="switch">
+                            <input type="checkbox" id="mcpEnabled">
+                            <span class="slider"></span>
+                        </label>
                     </div>
-                    <label for="bridgeUrl">桥接服务器URL:</label>
-                    <input type="url" id="bridgeUrl" placeholder="http://localhost:3001" value="http://localhost:3001">
-                    <div class="bridge-actions">
-                        <button id="testBridgeConnection" class="secondary-btn">测试连接</button>
-                        <button id="startBridgeServer" class="primary-btn">🚀 一键启动服务</button>
-                    </div>
-                    <div class="bridge-help-text">
-                        <small>💡 如果桥接服务器未运行，点击"一键启动服务"自动启动（需要Node.js环境）</small>
+                    <div class="mcp-settings" id="mcpSettings" style="display: none;">
+                        <div class="mcp-bridge-status" id="mcpBridgeStatus">
+                            <span class="status-indicator" id="bridgeStatusIndicator"></span>
+                            <span id="bridgeStatusText">检查中...</span>
+                        </div>
+                        <label for="bridgeUrl">桥接服务器URL:</label>
+                        <input type="url" id="bridgeUrl" placeholder="http://localhost:3001" value="http://localhost:3001">
+                        <div class="bridge-actions">
+                            <button id="testBridgeConnection" class="secondary-btn">测试连接</button>
+                            <button id="startBridgeServer" class="primary-btn">🚀 一键启动服务</button>
+                        </div>
+                        <div class="bridge-help-text">
+                            <small>💡 如果桥接服务器未运行，点击"一键启动服务"自动启动（需要Node.js环境）</small>
+                        </div>
                     </div>
                 </div>
                 

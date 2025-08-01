@@ -33,6 +33,8 @@ class UIController {
             saveSettings: document.getElementById('saveSettings'),
             resetSettings: document.getElementById('resetSettings'),
             testBridgeConnection: document.getElementById('testBridgeConnection'),
+            mcpEnabled: document.getElementById('mcpEnabled'),
+            mcpSettings: document.getElementById('mcpSettings'),
             mcpToolsEnabled: document.getElementById('mcpToolsEnabled'),
             selectAllMCP: document.getElementById('selectAllMCP'),
             clearAllMCP: document.getElementById('clearAllMCP'),
@@ -81,6 +83,10 @@ class UIController {
                 this.updateSettingsUI();
                 window.location.reload();
             }
+        });
+
+        elements.mcpEnabled.addEventListener('change', (e) => {
+            this.toggleMCPSettings(e.target.checked);
         });
         
         elements.testBridgeConnection.addEventListener('click', () => this.testBridgeConnection());
@@ -302,6 +308,14 @@ class UIController {
         document.getElementById('temperature').value = config.temperature;
         document.getElementById('temperatureValue').textContent = config.temperature;
         document.getElementById('model').value = config.model;
+        
+        // Update MCP enabled switch
+        const mcpEnabled = document.getElementById('mcpEnabled');
+        if (mcpEnabled) {
+            mcpEnabled.checked = config.mcpEnabled || false;
+            this.toggleMCPSettings(config.mcpEnabled || false);
+        }
+        
         document.getElementById('bridgeUrl').value = this.settingsManager.mcpService.bridgeUrl;
         this.updateBridgeStatus(this.settingsManager.mcpService.bridgeConnected);
     }
@@ -313,6 +327,13 @@ class UIController {
 
     hideSettings() {
         document.getElementById('settingsPanel').classList.remove('is-visible');
+    }
+
+    toggleMCPSettings(enabled) {
+        const mcpSettings = document.getElementById('mcpSettings');
+        if (mcpSettings) {
+            mcpSettings.style.display = enabled ? 'block' : 'none';
+        }
     }
 
     async toggleMCPServiceSelector(enabled) {

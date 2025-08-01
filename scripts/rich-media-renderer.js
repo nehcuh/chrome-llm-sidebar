@@ -156,6 +156,11 @@ class RichMediaRenderer {
                 renderedContent = JSON.stringify(renderedContent, null, 2);
             }
 
+            // 检测并优化JSON内容渲染
+            if (this.isJsonContent(renderedContent)) {
+                renderedContent = this.renderJsonContent(renderedContent);
+            }
+
             // 1. 处理数学公式（必须在Markdown之前）
             if (enableKaTeX) {
                 renderedContent = this.renderMath(renderedContent);
@@ -433,6 +438,80 @@ class RichMediaRenderer {
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
+    }
+
+    /**
+     * 检测内容是否为JSON格式
+     */
+    isJsonContent(content) {
+        const trimmed = content.trim();
+        return (
+            (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+            (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+            (trimmed.startsWith('```json') && trimmed.endsWith('```')) ||
+            (trimmed.startsWith('```JSON') && trimmed.endsWith('```'))
+        );
+    }
+
+    /**
+     * 渲染JSON内容
+     */
+    renderJsonContent(content) {
+        const trimmed = content.trim();
+        
+        // 如果是代码块格式的JSON，提取其中的JSON内容
+        if ((trimmed.startsWith('```json') || trimmed.startsWith('```JSON')) && trimmed.endsWith('```')) {
+            const jsonContent = trimmed.replace(/```(?:json|JSON)\n?([\s\S]*?)\n?```/, '$1');
+            return this.formatJsonCodeBlock(jsonContent);
+        }
+        
+        // 如果是纯JSON格式
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+            (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+            try {
+                // 验证是否为有效JSON
+                JSON.parse(trimmed);
+                return this.formatJsonCodeBlock(trimmed);
+            } catch (error) {
+                // 如果不是有效JSON，作为普通文本处理
+                return content;
+            }
+        }
+        
+        return content;
+    }
+
+    /**
+     * 格式化JSON代码块
+     */
+    formatJsonCodeBlock(jsonContent) {
+        try {
+            // 尝试格式化JSON
+            const parsed = JSON.parse(jsonContent);
+            const formattedJson = JSON.stringify(parsed, null, 2);
+            
+            // 使用代码块格式，添加复制按钮
+            return `<div class="json-block-wrapper">
+                <div class="json-header">
+                    <span class="json-type">JSON</span>
+                    <button class="copy-button" data-code="${this.escapeHtml(formattedJson)}" title="复制JSON">
+                        📋 复制
+                    </button>
+                </div>
+                <pre class="json-block"><code class="language-json">${this.escapeHtml(formattedJson)}</code></pre>
+            </div>`;
+        } catch (error) {
+            // 如果JSON解析失败，使用原始内容
+            return `<div class="json-block-wrapper">
+                <div class="json-header">
+                    <span class="json-type">JSON (Raw)</span>
+                    <button class="copy-button" data-code="${this.escapeHtml(jsonContent)}" title="复制内容">
+                        📋 复制
+                    </button>
+                </div>
+                <pre class="json-block"><code class="language-json">${this.escapeHtml(jsonContent)}</code></pre>
+            </div>`;
+        }
     }
 
     /**

@@ -7,47 +7,42 @@ class SidebarApp {
 
     async init() {
         try {
-            // 1. Initialize data migration first
-            const migrationManager = new DataMigrationManager();
-            await migrationManager.migrate();
-            
-            // 2. Initialize database and managers
+            // 1. Initialize database and managers
             const dbManager = new DatabaseManager();
             const sessionManager = new SessionManager(dbManager);
             const promptManager = new PromptManager(dbManager);
             
-            // 3. Initialize shared services
+            // 2. Initialize shared services
             const mcpService = new MCPService();
             const mcpConfigManager = new MCPConfigManager();
 
-            // 4. Initialize components and inject dependencies
+            // 3. Initialize components and inject dependencies
             const chatService = new ChatService(mcpService, sessionManager);
             const settingsManager = new SettingsManager(mcpService, mcpConfigManager);
 
-            // 5. Make instances globally available for simplicity in this context
+            // 4. Make instances globally available for simplicity in this context
             window.dbManager = dbManager;
             window.sessionManager = sessionManager;
             window.promptManager = promptManager;
             window.chatService = chatService;
             window.settingsManager = settingsManager;
-            window.migrationManager = migrationManager;
 
-            // 6. Initialize core logic in the correct order
+            // 5. Initialize core logic in the correct order
             await dbManager.init();
             await sessionManager.init();
             await promptManager.init();
             await settingsManager.init();
             await chatService.init(settingsManager.config);
 
-            // 7. Initialize the UI controller which depends on the services
+            // 6. Initialize the UI controller which depends on the services
             const uiController = new UIController(chatService, settingsManager, sessionManager, promptManager);
             window.uiController = uiController;
 
-            // 8. Initialize the task executor
+            // 7. Initialize the task executor
             const taskExecutor = new TaskExecutor(chatService, uiController);
             window.taskExecutor = taskExecutor;
 
-            // 9. Initialize the UI component manager
+            // 8. Initialize the UI component manager
             const uiComponentManager = new UIComponentManager(sessionManager, promptManager, chatService);
             window.uiComponentManager = uiComponentManager;
 

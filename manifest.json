@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Simple AI Copilot",
   "version": "1.0.1",
-  "description": "A simple AI copilot with OpenAI-compatible API support, web search, and MCP capabilities",
+  "description": "A simple AI copilot with OpenAI-compatible API support and intelligent page operations",
   "permissions": [
     "storage",
     "sidePanel",
@@ -10,12 +10,10 @@
     "scripting"
   ],
   "host_permissions": [
-    "*://*/*",
-    "http://localhost:*/*",
-    "http://127.0.0.1:*/*"
+    "*://*/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* https: data: blob:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https: data: blob: http://localhost:* http://127.0.0.1:*;"
   },
   "action": {
     "default_popup": "popup.html",

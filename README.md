@@ -1,18 +1,16 @@
 # Simple AI Copilot
 
-一个简化的Chrome侧边栏AI助手插件，支持OpenAI兼容接口、网络搜索和MCP能力。
+一个简洁的Chrome侧边栏AI助手插件，支持OpenAI兼容接口和智能页面操作。
 
 ## 功能特性
 
 - ✅ **OpenAI兼容接口**: 支持任何兼容OpenAI API的服务
 - ✅ **侧边栏聊天**: 便捷的侧边栏界面，支持实时对话
 - ✅ **智能配置**: 自定义API URL、API Key、模型和Temperature
-- ✅ **网络搜索**: 集成DuckDuckGo搜索，获取实时信息
-- ✅ **MCP支持**: 完整的Model Context Protocol支持
-  - 支持文件系统、Git、搜索、数据库等工具
-  - 可视化配置界面，简单易用
-  - JSON配置导入，与Claude Desktop完全兼容
-  - 自动工具调用，智能增强对话
+- ✅ **智能页面操作**: 自动元素定位和交互
+- ✅ **批量操作**: 支持批量处理多个元素
+- ✅ **自适应策略**: 智能回退机制处理复杂页面
+- 🔧 **MCP支持**: 可选的Model Context Protocol功能（默认关闭）
 
 ## 项目结构
 
@@ -46,39 +44,19 @@ simple-ai-copilot/
 3. 点击"加载已解压的扩展程序"
 4. 选择项目文件夹
 
-### MCP桥接服务器安装
-```bash
-# 进入MCP桥接服务器目录
-cd mcp-bridge
-
-# 安装依赖
-npm install
-
-# 启动服务器
-npm start
-```
-
 ## 使用方法
 
-### 基础聊天
-1. 点击扩展图标或使用快捷键打开侧边栏
+### 基础功能
+1. 点击扩展图标打开侧边栏
 2. 在设置中配置API URL和API Key
 3. 开始与AI助手对话
+4. 使用页面操作功能："帮我点击登录按钮"、"搜索今日新闻"
 
-### MCP工具使用
-1. 确保MCP桥接服务器已启动
-2. 在设置中测试桥接服务器连接  
-3. 启用需要的MCP服务器（filesystem, git, search等）
-4. 在对话中使用相关功能，如："读取README.md文件"、"查看git状态"
-
-### 🆕 JSON配置导入
-1. 在设置中切换到"JSON配置"标签
-2. 粘贴Claude Desktop兼容的配置JSON
-3. 点击"验证配置"检查格式
-4. 点击"导入配置"一键应用设置
-
-详细的MCP使用指南请参考 [MCP_GUIDE.md](./MCP_GUIDE.md)  
-JSON配置功能说明请参考 [JSON_CONFIG_GUIDE.md](./JSON_CONFIG_GUIDE.md)
+### MCP功能（可选）
+1. 在设置中启用"MCP支持"
+2. 按照提示启动桥接服务器
+3. 配置需要的MCP服务器
+4. 使用高级功能："读取当前目录的文件"
 
 ## 配置说明
 
@@ -86,18 +64,7 @@ JSON配置功能说明请参考 [JSON_CONFIG_GUIDE.md](./JSON_CONFIG_GUIDE.md)
 - **API Key**: 对应服务的API密钥
 - **Temperature**: 控制AI回复的创造性（0-2）
 - **Model**: 使用的模型名称（如：`gpt-3.5-turbo`）
-- **桥接服务器URL**: MCP桥接服务器地址（默认：`http://localhost:3001`）
-
-## 开发计划
-
-- [x] 完善网络搜索功能
-- [x] 添加MCP协议支持
-- [x] 实现文件系统工具
-- [x] 实现Git工具
-- [ ] 添加WebSocket连接支持
-- [ ] 支持更多MCP服务器
-- [ ] 添加快捷键支持
-- [ ] 优化UI/UX体验
+- **MCP支持**: 可选的高级功能，默认关闭
 
 ## 技术栈
 

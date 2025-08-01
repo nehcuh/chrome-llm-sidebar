@@ -141,7 +141,7 @@ async function handleAgenticAction(action, senderTab) {
         throw new Error('Invalid agentic action: missing type property');
     }
     
-    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    let currentTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
 
     if (!currentTab && action.type !== 'CREATE_TAB') {
         throw new Error('No active tab found to perform the action.');
@@ -153,8 +153,9 @@ async function handleAgenticAction(action, senderTab) {
             await chrome.tabs.reload(currentTab.id);
             return { status: 'Tab reloaded' };
         case 'CREATE_TAB':
-            await chrome.tabs.create({ url: action.url || 'about:newtab' });
-            return { status: 'New tab created' };
+            const newTab = await chrome.tabs.create({ url: action.url || 'about:newtab' });
+            currentTab = newTab;
+            return { status: 'New tab created', tabId: newTab.id };
         case 'CLOSE_TAB':
             await chrome.tabs.remove(currentTab.id);
             return { status: 'Tab closed' };
@@ -165,32 +166,59 @@ async function handleAgenticAction(action, senderTab) {
         // Special action: Wait for navigation
         case 'WAIT_FOR_NAVIGATION':
             return new Promise((resolve) => {
-                const listener = (tabId, changeInfo, tab) => {
-                    if (tabId === currentTab.id && changeInfo.status === 'complete') {
-                        chrome.tabs.onUpdated.removeListener(listener);
+                // Check if tab is already loaded
+                chrome.tabs.get(currentTab.id, (tab) => {
+                    if (tab.status === 'complete') {
                         resolve({ status: 'Navigation complete' });
+                        return;
                     }
-                };
-                chrome.tabs.onUpdated.addListener(listener);
+                    
+                    // Wait for navigation to complete
+                    const listener = (tabId, changeInfo, tab) => {
+                        if (tabId === currentTab.id && changeInfo.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+                            resolve({ status: 'Navigation complete' });
+                        }
+                    };
+                    chrome.tabs.onUpdated.addListener(listener);
+                    
+                    // Set a timeout in case navigation takes too long
+                    setTimeout(() => {
+                        chrome.tabs.onUpdated.removeListener(listener);
+                        resolve({ status: 'Navigation timeout' });
+                    }, 10000);
+                });
             });
 
         // Page-level actions (forwarded to content script)
         case 'CLICK_ELEMENT':
         case 'TYPE_IN_ELEMENT':
         case 'LIST_LINKS':
+            console.log('[AGENT-MODE] Executing page-level action:', action.type, 'on tab:', currentTab.id);
+            
+            // Wait a bit more for the page to fully load after navigation
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             try {
-                return await chrome.tabs.sendMessage(currentTab.id, { agenticAction: action });
+                console.log('[AGENT-MODE] Sending message to content script...');
+                const result = await chrome.tabs.sendMessage(currentTab.id, { agenticAction: action });
+                console.log('[AGENT-MODE] Content script response:', result);
+                return result;
             } catch (error) {
                 console.error('[AGENT-MODE] Failed to send message to content script:', error);
                 // Try to inject content script and retry
                 try {
+                    console.log('[AGENT-MODE] Injecting content script...');
                     await chrome.scripting.executeScript({
                         target: { tabId: currentTab.id },
                         files: ['content.js']
                     });
                     // Wait a moment for script to load
                     await new Promise(resolve => setTimeout(resolve, 500));
-                    return await chrome.tabs.sendMessage(currentTab.id, { agenticAction: action });
+                    console.log('[AGENT-MODE] Retrying message to content script...');
+                    const result = await chrome.tabs.sendMessage(currentTab.id, { agenticAction: action });
+                    console.log('[AGENT-MODE] Content script response after injection:', result);
+                    return result;
                 } catch (injectError) {
                     throw new Error(`Failed to communicate with content script: ${error.message}. Injection also failed: ${injectError.message}`);
                 }

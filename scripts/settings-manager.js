@@ -4,7 +4,8 @@ class SettingsManager {
             apiUrl: 'https://api.openai.com/v1',
             apiKey: '',
             temperature: 0.7,
-            model: 'gpt-3.5-turbo'
+            model: 'gpt-3.5-turbo',
+            mcpEnabled: false
         };
         this.mcpService = mcpService; // Use the provided instance
         this.mcpConfigManager = mcpConfigManager; // Use the provided instance
@@ -16,7 +17,7 @@ class SettingsManager {
 
     async loadConfig() {
         try {
-            const stored = await chrome.storage.sync.get(['apiUrl', 'apiKey', 'temperature', 'model']);
+            const stored = await chrome.storage.sync.get(['apiUrl', 'apiKey', 'temperature', 'model', 'mcpEnabled']);
             this.config = { ...this.config, ...stored };
         } catch (error) {
             console.error('Failed to load config:', error);
@@ -28,10 +29,11 @@ class SettingsManager {
             apiUrl: document.getElementById('apiUrl').value.trim(),
             apiKey: document.getElementById('apiKey').value.trim(),
             temperature: parseFloat(document.getElementById('temperature').value),
-            model: document.getElementById('model').value.trim()
+            model: document.getElementById('model').value.trim(),
+            mcpEnabled: document.getElementById('mcpEnabled')?.checked || false
         };
 
-        const newBridgeUrl = document.getElementById('bridgeUrl').value.trim();
+        const newBridgeUrl = document.getElementById('bridgeUrl')?.value.trim() || '';
 
         if (!newConfig.apiUrl || !newConfig.apiKey) {
             alert('请填写API URL和API Key');
@@ -43,10 +45,17 @@ class SettingsManager {
             this.config = { ...this.config, ...newConfig };
             window.chatService.config = this.config; // Update shared config
 
-            if (newBridgeUrl !== this.mcpService.bridgeUrl) {
-                this.mcpService.bridgeUrl = newBridgeUrl;
-                await chrome.storage.sync.set({ mcpBridgeUrl: newBridgeUrl });
-                await this.mcpService.checkBridgeConnection();
+            // Only handle MCP if enabled
+            if (newConfig.mcpEnabled) {
+                if (newBridgeUrl !== this.mcpService.bridgeUrl) {
+                    this.mcpService.bridgeUrl = newBridgeUrl;
+                    await chrome.storage.sync.set({ mcpBridgeUrl: newBridgeUrl });
+                    await this.mcpService.checkBridgeConnection();
+                }
+            } else {
+                // Disable MCP if turned off
+                this.mcpService.bridgeConnected = false;
+                this.mcpService.availableTools.clear();
             }
             
             alert('设置已保存');
@@ -67,9 +76,13 @@ class SettingsManager {
                     apiUrl: 'https://api.openai.com/v1',
                     apiKey: '',
                     temperature: 0.7,
-                    model: 'gpt-3.5-turbo'
+                    model: 'gpt-3.5-turbo',
+                    mcpEnabled: false
                 };
                 window.chatService.config = this.config;
+                // Disable MCP on reset
+                this.mcpService.bridgeConnected = false;
+                this.mcpService.availableTools.clear();
                 alert('设置已重置');
                 return true;
             } catch (error) {

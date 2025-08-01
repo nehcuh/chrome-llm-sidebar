@@ -132,6 +132,13 @@ class ChatService {
         window.uiController.renderMessage(loadingMessage);
 
         try {
+            // Check if MCP is enabled in settings
+            const settings = await chrome.storage.sync.get(['mcpEnabled']);
+            const mcpEnabled = settings.mcpEnabled || false;
+            
+            // Only enable MCP tools if both globally enabled and user requested
+            const actualMcpToolsEnabled = mcpEnabled && mcpToolsEnabled;
+            
             // Gather context for the planner
             const conversationHistory = this.messages.slice(-10); // Get last 10 messages
             const lastActionPlan = window.taskExecutor.lastSuccessfulPlan;
@@ -173,7 +180,7 @@ class ChatService {
             .join('\n');
 
         const plannerPrompt = `
-            You are a stateful browser control assistant with memory.
+            You are a stateful browser control assistant with memory and adaptive strategies.
             Your task is to understand the user's latest instruction based on the provided context (conversation history and last executed action plan) and then create a new action plan as a JSON array.
 
             Available atomic actions:
@@ -188,6 +195,8 @@ class ChatService {
             - CREATE_TAB()
             - CLOSE_TAB()
 
+            IMPORTANT: For search tasks, always include WAIT_FOR_NAVIGATION() after NAVIGATE_TO_URL and before typing/searching.
+
             Your response must be a JSON array with objects that have a "type" field and corresponding parameters:
             [
               {
@@ -195,14 +204,66 @@ class ChatService {
                 "url": "https://example.com"
               },
               {
-                "type": "CLICK_ELEMENT", 
-                "target": "button text"
+                "type": "WAIT_FOR_NAVIGATION"
               },
               {
                 "type": "TYPE_IN_ELEMENT",
-                "target": "input field",
-                "value": "text to type"
+                "target": "search input",
+                "value": "search query"
+              },
+              {
+                "type": "CLICK_ELEMENT", 
+                "target": "search button"
               }
+            ]
+
+            Examples:
+            User: "打开 google, 帮我搜索今日新闻"
+            Plan: [
+              {"type": "NAVIGATE_TO_URL", "url": "https://www.google.com"},
+              {"type": "WAIT_FOR_NAVIGATION"},
+              {"type": "TYPE_IN_ELEMENT", "target": "Google search input", "value": "今日新闻"},
+              {"type": "CLICK_ELEMENT", "target": "Google search button"}
+            ]
+
+            User: "帮我在新标签页打开Google，并搜索今日新闻"
+            Plan: [
+              {"type": "CREATE_TAB"},
+              {"type": "NAVIGATE_TO_URL", "url": "https://www.google.com"},
+              {"type": "WAIT_FOR_NAVIGATION"},
+              {"type": "TYPE_IN_ELEMENT", "target": "Google search input", "value": "今日新闻"},
+              {"type": "CLICK_ELEMENT", "target": "Google search button"}
+            ]
+
+            User: "Search for Chrome extensions on Baidu"
+            Plan: [
+              {"type": "NAVIGATE_TO_URL", "url": "https://www.baidu.com"},
+              {"type": "WAIT_FOR_NAVIGATION"},
+              {"type": "TYPE_IN_ELEMENT", "target": "Baidu search input", "value": "Chrome extensions"},
+              {"type": "CLICK_ELEMENT", "target": "Baidu search button"}
+            ]
+
+            User: "帮我打开邮箱，将其中的预警信息都删除"
+            Plan: [
+              {"type": "CLICK_ELEMENT", "target": "邮箱"},
+              {"type": "WAIT_FOR_NAVIGATION"},
+              {"type": "ANSWER_USER", "text": "我已经进入了邮箱页面。现在我会查找带有'预警'字样的邮件，然后进行批量删除操作。"},
+              {"type": "CLICK_ELEMENT", "target": "预警邮件"},
+              {"type": "CLICK_ELEMENT", "target": "预警邮件"},
+              {"type": "CLICK_ELEMENT", "target": "预警邮件"},
+              {"type": "CLICK_ELEMENT", "target": "删除按钮"},
+              {"type": "ANSWER_USER", "text": "我已经选中了所有预警邮件并执行了删除操作。"}
+            ]
+
+            User: "删除所有带有'预警'字样的邮件"
+            Plan: [
+              {"type": "ANSWER_USER", "text": "我将在当前邮件列表中查找所有带有'预警'字样的邮件，然后进行批量删除。"},
+              {"type": "CLICK_ELEMENT", "target": "带有预警字样的邮件"},
+              {"type": "CLICK_ELEMENT", "target": "带有预警字样的邮件"},
+              {"type": "CLICK_ELEMENT", "target": "带有预警字样的邮件"},
+              {"type": "CLICK_ELEMENT", "target": "管理按钮"},
+              {"type": "CLICK_ELEMENT", "target": "删除按钮"},
+              {"type": "ANSWER_USER", "text": "我已经完成了批量删除预警邮件的操作。"}
             ]
 
             ---
@@ -222,6 +283,8 @@ class ChatService {
             [YOUR NEW ACTION PLAN]
             Based on all the context above, what is the next action plan?
             Your output must be a single JSON array following the format shown above.
+            
+            IMPORTANT: If the user request involves batch operations (like deleting multiple items), include ANSWER_USER actions to explain the process and provide feedback.
         `;
 
         const requestBody = {
@@ -301,11 +364,17 @@ class ChatService {
         };
 
         if (enableFunctionCalling && this.mcpService.bridgeConnected) {
-            const availableTools = this.mcpService.getAvailableTools();
-            if (availableTools.length > 0) {
-                console.log('[CHAT-DEBUG] Adding function calling with tools:', availableTools.map(t => t.name));
-                requestBody.tools = this.convertMCPToolsToOpenAIFormat(availableTools);
-                requestBody.tool_choice = 'auto';
+            // Check if MCP is enabled in settings
+            const settings = await chrome.storage.sync.get(['mcpEnabled']);
+            const mcpEnabled = settings.mcpEnabled || false;
+            
+            if (mcpEnabled) {
+                const availableTools = this.mcpService.getAvailableTools();
+                if (availableTools.length > 0) {
+                    console.log('[CHAT-DEBUG] Adding function calling with tools:', availableTools.map(t => t.name));
+                    requestBody.tools = this.convertMCPToolsToOpenAIFormat(availableTools);
+                    requestBody.tool_choice = 'auto';
+                }
             }
         }
 
