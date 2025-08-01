@@ -126,58 +126,164 @@ class ChatService {
 
     async sendMessage(messageText, mcpToolsEnabled, useFunctionCalling, getSelectedMCPServices) {
         const userMessage = this.addMessage('user', messageText);
-        
-        // Immediately render user message
         window.uiController.renderMessage(userMessage);
 
-        const loadingMessage = this.addMessage('loading', '正在思考...');
+        const loadingMessage = this.addMessage('loading', '正在为您规划任务...');
         window.uiController.renderMessage(loadingMessage);
 
         try {
-            let finalMessage = messageText;
-            let toolsUsed = [];
-            let responseText = '';
+            // Gather context for the planner
+            const conversationHistory = this.messages.slice(-10); // Get last 10 messages
+            const lastActionPlan = window.taskExecutor.lastSuccessfulPlan;
 
-            // Determine if we should use Function Calling or the old MCP enhancement method
-            const shouldUseFunctionCalling = mcpToolsEnabled && useFunctionCalling && this.mcpService.bridgeConnected;
-            
-            if (shouldUseFunctionCalling) {
-                console.log('[CHAT-DEBUG] Using OpenAI Function Calling with MCP tools');
-                const apiResponse = await this.callOpenAIAPI(finalMessage, true);
-                responseText = await this.processOpenAIResponse(apiResponse, finalMessage);
-            } else {
-                // Fallback to the old method
-                if (mcpToolsEnabled) {
-                    const selectedServices = await getSelectedMCPServices();
-                    if (selectedServices.length > 0) {
-                        const { message: enhancedMessage, toolsUsed: mcpToolsUsed } = await this.mcpService.enhanceMessageWithTools(finalMessage);
-                        if (mcpToolsUsed.length > 0) {
-                            finalMessage = enhancedMessage;
-                            toolsUsed = mcpToolsUsed;
-                        }
-                    }
-                }
-                
-                const messageForLLM = this.formatMessageForLLM(finalMessage, toolsUsed);
-                const apiResponse = await this.callOpenAIAPI(messageForLLM, false);
-                responseText = apiResponse.choices[0].message.content;
-            }
+            const plan = await this.getPlanFromLLM(messageText, conversationHistory, lastActionPlan);
             
             this.removeMessage(loadingMessage.id);
             window.uiController.removeMessage(loadingMessage.id);
 
-            const assistantMessage = this.addMessage('assistant', responseText);
-            window.uiController.renderMessage(assistantMessage);
+            // If the plan is just a simple answer, render it and stop.
+            if (plan.length === 1 && plan[0].type === 'ANSWER_USER') {
+                const assistantMessage = this.addMessage('assistant', plan[0].text);
+                window.uiController.renderMessage(assistantMessage);
+                return;
+            }
+
+            // Add the plan to the chat for transparency
+            const planMessage = this.addMessage('assistant', `好的，这是我的计划：\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\``);
+            window.uiController.renderMessage(planMessage);
+
+            // If it's a sequence of actions, start the executor
+            window.taskExecutor.start(plan);
 
         } catch (error) {
             this.removeMessage(loadingMessage.id);
             window.uiController.removeMessage(loadingMessage.id);
             
-            const errorMessageContent = `**请求出错**\n\n抱歉，在处理您的请求时遇到了问题。\n\n**错误详情:**\n${error.message}`;
+            const errorMessageContent = `**任务规划失败**\n\n抱歉，在理解您的指令时遇到了问题。\n\n**错误详情:**\n${error.message}`;
             const errorMessage = this.addMessage('assistant', errorMessageContent);
             window.uiController.renderMessage(errorMessage);
             
-            console.error('Error sending message:', error);
+            console.error('Error getting plan from LLM:', error);
+        }
+    }
+
+    async getPlanFromLLM(messageText, conversationHistory, lastActionPlan) {
+        const historyString = conversationHistory
+            .map(msg => `${msg.role}: ${typeof msg.content === 'string' ? msg.content.substring(0, 200) : 'Complex Object'}`)
+            .join('\n');
+
+        const plannerPrompt = `
+            You are a stateful browser control assistant with memory.
+            Your task is to understand the user's latest instruction based on the provided context (conversation history and last executed action plan) and then create a new action plan as a JSON array.
+
+            Available atomic actions:
+            - CLICK_ELEMENT(target: string)
+            - TYPE_IN_ELEMENT(target: string, value: string)
+            - NAVIGATE_TO_URL(url: string)
+            - SUMMARIZE_PAGE()
+            - LIST_LINKS()
+            - WAIT_FOR_NAVIGATION()
+            - ANSWER_USER(text: string)
+            - RELOAD_TAB()
+            - CREATE_TAB()
+            - CLOSE_TAB()
+
+            Your response must be a JSON array with objects that have a "type" field and corresponding parameters:
+            [
+              {
+                "type": "NAVIGATE_TO_URL",
+                "url": "https://example.com"
+              },
+              {
+                "type": "CLICK_ELEMENT", 
+                "target": "button text"
+              },
+              {
+                "type": "TYPE_IN_ELEMENT",
+                "target": "input field",
+                "value": "text to type"
+              }
+            ]
+
+            ---
+            [CONTEXT]
+
+            [Recent Conversation History]
+            ${historyString}
+
+            [Last Executed Action Plan]
+            ${lastActionPlan ? JSON.stringify(lastActionPlan, null, 2) : 'None'}
+
+            ---
+            [LATEST USER INSTRUCTION]
+            "${messageText}"
+
+            ---
+            [YOUR NEW ACTION PLAN]
+            Based on all the context above, what is the next action plan?
+            Your output must be a single JSON array following the format shown above.
+        `;
+
+        const requestBody = {
+            model: this.config.model,
+            messages: [{ role: 'user', content: plannerPrompt }],
+            temperature: 0,
+        };
+        
+        if (this.config.model.includes('gpt-4-1106-preview') || this.config.model.includes('gpt-4-turbo')) {
+            requestBody.response_format = { type: "json_object" };
+        }
+
+        const response = await fetch(`${this.config.apiUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.config.apiKey}`
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData?.error?.message || `Planner API request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices[0].message.content;
+
+        try {
+            // Extract JSON from the response, which might be wrapped in markdown
+            const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
+            const jsonString = jsonMatch ? jsonMatch[1] : content;
+            
+            const result = JSON.parse(jsonString);
+            const plan = Array.isArray(result) ? result : result.plan;
+
+            if (!plan) {
+                throw new Error("The AI planner returned an object without a 'plan' key or a valid array.");
+            }
+            
+            // Validate all tasks have valid types
+            const validTypes = ['CLICK_ELEMENT', 'TYPE_IN_ELEMENT', 'NAVIGATE_TO_URL', 'SUMMARIZE_PAGE', 'LIST_LINKS', 'WAIT_FOR_NAVIGATION', 'ANSWER_USER', 'RELOAD_TAB', 'CREATE_TAB', 'CLOSE_TAB'];
+            
+            if (!Array.isArray(plan)) {
+                throw new Error("Plan must be an array of tasks.");
+            }
+            
+            for (let i = 0; i < plan.length; i++) {
+                const task = plan[i];
+                if (!task || typeof task !== 'object') {
+                    throw new Error(`Task at index ${i} is not a valid object.`);
+                }
+                if (!task.type || !validTypes.includes(task.type)) {
+                    throw new Error(`Task at index ${i} has invalid or missing type: ${task.type}. Valid types are: ${validTypes.join(', ')}`);
+                }
+            }
+            
+            return plan;
+        } catch (e) {
+            console.error("Failed to parse plan from LLM:", content, e);
+            throw new Error("The AI planner returned an invalid plan format.");
         }
     }
 

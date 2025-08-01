@@ -283,6 +283,18 @@ class UIController {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
+    showTaskStatus(text, type = 'in-progress') {
+        const statusDiv = document.getElementById('taskStatus');
+        statusDiv.textContent = text;
+        statusDiv.className = `task-status ${type}`;
+        statusDiv.classList.remove('hidden');
+    }
+
+    hideTaskStatus() {
+        const statusDiv = document.getElementById('taskStatus');
+        statusDiv.classList.add('hidden');
+    }
+
     updateSettingsUI() {
         const config = this.settingsManager.config;
         document.getElementById('apiUrl').value = config.apiUrl;

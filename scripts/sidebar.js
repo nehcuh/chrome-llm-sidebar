@@ -43,7 +43,11 @@ class SidebarApp {
             const uiController = new UIController(chatService, settingsManager, sessionManager, promptManager);
             window.uiController = uiController;
 
-            // 8. Initialize the UI component manager
+            // 8. Initialize the task executor
+            const taskExecutor = new TaskExecutor(chatService, uiController);
+            window.taskExecutor = taskExecutor;
+
+            // 9. Initialize the UI component manager
             const uiComponentManager = new UIComponentManager(sessionManager, promptManager, chatService);
             window.uiComponentManager = uiComponentManager;
 

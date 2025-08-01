@@ -12,7 +12,13 @@
       "Bash(git branch:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm run build:*)",
+      "Bash(mkdir:*)",
+      "Bash(curl:*)",
+      "Bash(rm:*)",
+      "Bash(find:*)",
+      "Bash(open:*)"
     ],
     "deny": []
   }

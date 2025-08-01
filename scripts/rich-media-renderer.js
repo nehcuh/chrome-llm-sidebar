@@ -190,7 +190,7 @@ class RichMediaRenderer {
         }
 
         try {
-            return marked(content);
+            return marked.parse(content);
         } catch (error) {
             console.error('Markdown rendering error:', error);
             return this.escapeHtml(content);
